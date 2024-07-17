@@ -233,12 +233,6 @@ fixtures = [
     "filters": [
         ["name", "in", ["Workstation", "Job Card Tool"]]
     ]
-},
-{
-    "dt": "DocType",
-    "filters": [
-        ["name", "in", ["Job Card Tool"]]
-    ]
 }
 ]
 
