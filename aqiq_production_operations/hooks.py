@@ -227,3 +227,18 @@ app_license = "mit"
 # 	"Logging DocType Name": 30  # days to retain logs
 # }
 
+fixtures = [
+{
+    "dt": "Client Script",
+    "filters": [
+        ["name", "in", ["Workstation", "Job Card Tool"]]
+    ]
+},
+{
+    "dt": "DocType",
+    "filters": [
+        ["name", "in", ["Job Card Tool"]]
+    ]
+}
+]
+
