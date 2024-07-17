@@ -228,11 +228,18 @@ app_license = "mit"
 # }
 
 fixtures = [
-{
-    "dt": "Client Script",
-    "filters": [
-        ["name", "in", ["Workstation", "Job Card Tool"]]
-    ]
-}
+    {
+        "dt": "Client Script",
+        "filters": [
+            ["name", "in", ["Workstation", "Job Card Tool"]]
+        ]
+    },
+    {
+        "dt": "Custom Field",
+        "filters": [
+            ["dt", "=", "Work Order"]
+        ]
+    }
 ]
+
 
