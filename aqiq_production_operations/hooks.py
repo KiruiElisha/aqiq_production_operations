@@ -243,8 +243,7 @@ fixtures = [
     {
         "dt": "DocType",
         "filters": [
-            ["name", "in", ["Job Card Tool"]],
-            ["custom", "=", 1]
+            ["name", "in", ["Job Card Tool"]]            
         ]
     }
 ]
