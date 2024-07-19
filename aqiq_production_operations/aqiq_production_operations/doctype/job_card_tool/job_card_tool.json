@@ -6,7 +6,9 @@
  "engine": "InnoDB",
  "field_order": [
   "job_card_tool_section",
-  "workstation_dashboard"
+  "workstation_dashboard",
+  "configured_workstation",
+  "filtered_workstation"
  ],
  "fields": [
   {
@@ -17,13 +19,25 @@
    "fieldname": "workstation_dashboard",
    "fieldtype": "HTML",
    "label": "workstation_dashboard"
+  },
+  {
+   "fieldname": "configured_workstation",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Configured Workstation"
+  },
+  {
+   "fieldname": "filtered_workstation",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Filtered Workstation"
   }
  ],
  "hide_toolbar": 1,
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2024-07-17 16:20:22.885953",
+ "modified": "2024-07-18 11:09:15.791395",
  "modified_by": "Administrator",
  "module": "AQIQ Production operations",
  "name": "Job Card Tool",
