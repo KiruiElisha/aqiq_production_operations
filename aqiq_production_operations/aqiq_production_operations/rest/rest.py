@@ -23,6 +23,7 @@ def set_job_card_employees(job_card_name, employees):
         job_card.save()
         frappe.db.commit()
         return "Success"
+    
     except Exception as e:
         frappe.log_error(f"Error in set_job_card_employees: {str(e)}")
         return f"Error: {str(e)}"
