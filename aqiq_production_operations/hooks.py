@@ -234,12 +234,13 @@ fixtures = [
             ["name", "in", ["Workstation", "Job Card Tool"]]
         ]
     },
-    {
+        {
         "dt": "Custom Field",
         "filters": [
-            ["dt", "=", "Work Order"]
+            ["dt", "in", ["Work Order", "Job Card"]]
         ]
     },
+
     {
         "dt": "DocType",
         "filters": [
