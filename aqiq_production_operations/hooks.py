@@ -231,7 +231,7 @@ fixtures = [
     {
         "dt": "Client Script",
         "filters": [
-            ["name", "in", ["Workstation", "Job Card Tool"]]
+            ["name", "in", ["Workstation", "Job Card Tool","Workstation Custom"]]
         ]
     },
         {
@@ -249,3 +249,10 @@ fixtures = [
         ]
     }
 ]
+
+
+
+
+
+
+
