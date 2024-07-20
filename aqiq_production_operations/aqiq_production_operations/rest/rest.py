@@ -29,7 +29,6 @@ def set_job_card_employees(job_card_name, employees):
         return f"Error: {str(e)}"
     
 
-
 @frappe.whitelist()
 def create_and_rename_job_card(parent_job_card, remaining_qty):
     try:
@@ -51,15 +50,4 @@ def create_and_rename_job_card(parent_job_card, remaining_qty):
     except Exception as e:
         frappe.log_error(f"Error in create_and_rename_job_card: {str(e)}")
         return None
-    
 
-
-
-    # your_app/api.py
-
-@frappe.whitelist()
-def authenticate_workstation(workstation, password):
-    if frappe.db.exists("Workstation", {"name": workstation, "password": password}):
-        return {"authenticated": True}
-    else:
-        return {"authenticated": False}
