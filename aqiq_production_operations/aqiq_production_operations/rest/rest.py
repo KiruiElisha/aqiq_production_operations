@@ -36,7 +36,7 @@ def create_and_rename_job_card(parent_job_card, remaining_qty):
         parent_doc = frappe.get_doc("Job Card", parent_job_card)
         new_job_card = frappe.copy_doc(parent_doc)
         new_job_card.status = 'Open'
-        new_job_card.is_active = False
+        new_job_card.custom_is_active = False
         new_job_card.for_quantity = float(remaining_qty)
         new_job_card.total_completed_qty = 0
         new_job_card.time_logs = []
