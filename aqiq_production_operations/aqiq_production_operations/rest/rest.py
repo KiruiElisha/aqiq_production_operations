@@ -15,7 +15,7 @@ def set_job_card_employees(job_card_name, employees):
         
         # Add new employees
         for emp in employees:
-            job_card.append("employee", {
+            job_card.append("custom_employee_list", {
                 "employee": emp.get("employee"),
                 "employee_name": emp.get("employee_name")
             })
@@ -41,7 +41,9 @@ def create_and_rename_job_card(parent_job_card, remaining_qty):
         new_job_card.time_logs = []
         new_job_card.scrap_items = []
         new_job_card.docstatus = 0
+        new_job_card.custom_employee_list
         new_job_card.insert()
+        
 
         new_name = f"{parent_job_card}-1"
         new_job_card.rename(new_name)
