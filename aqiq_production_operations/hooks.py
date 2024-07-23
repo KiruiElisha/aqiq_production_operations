@@ -247,10 +247,15 @@ fixtures = [
             ["name", "in", ["Job Card Tool","Workstation Employee"]],
             ["custom", "=", 1]
         ]
+    },
+    {
+        "dt": "Print Format",
+        "filters": [
+            ["doc_type", "in", ["Work Order", "Job Card", "Workstation"]],
+            ["standard", "=", "No"]
+        ]
     }
 ]
-
-
 
 
 

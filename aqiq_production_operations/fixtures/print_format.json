@@ -1,0 +1,33 @@
+[
+ {
+  "absolute_value": 0,
+  "align_labels_right": 0,
+  "css": null,
+  "custom_format": 0,
+  "default_print_language": null,
+  "disabled": 0,
+  "doc_type": "Workstation",
+  "docstatus": 0,
+  "doctype": "Print Format",
+  "font": null,
+  "font_size": 14,
+  "format_data": "[{\"fieldname\": \"print_heading_template\", \"fieldtype\": \"Custom HTML\", \"options\": \"\"}, {\"fieldtype\": \"Section Break\", \"label\": \"\"}, {\"fieldtype\": \"Column Break\"}, {\"fieldname\": \"_custom_html\", \"print_hide\": 0, \"label\": \"Custom HTML\", \"fieldtype\": \"HTML\", \"options\": \"<style>\\r\\n    .qr-code-container {\\r\\n        text-align: center;\\r\\n        padding: 20px;\\r\\n        background-color: #f8f8f8;\\r\\n        border-radius: 10px;\\r\\n        box-shadow: 0 4px 8px rgba(0,0,0,0.1);\\r\\n    }\\r\\n    .qr-code-title {\\r\\n        font-size: 18px;\\r\\n        font-weight: bold;\\r\\n        color: #333;\\r\\n        margin-bottom: 15px;\\r\\n    }\\r\\n    .qr-code-image {\\r\\n        border: 5px solid white;\\r\\n        box-shadow: 0 0 10px rgba(0,0,0,0.1);\\r\\n    }\\r\\n</style>\\r\\n\\r\\n<div class=\\\"col-xs-6\\\">\\r\\n    <div class=\\\"qr-code-container\\\">\\r\\n        <div class=\\\"qr-code-title\\\">Workstation QR Code</div>\\r\\n        <img id='qrcode' \\r\\n            class=\\\"qr-code-image\\\"\\r\\n            src=\\\"https://api.qrserver.com/v1/create-qr-code/?data={{ doc.custom_workstation_qr_code | urlencode }}&amp;size=200x200\\\" \\r\\n            alt=\\\"Workstation QR Code\\\" \\r\\n            title=\\\"{{ doc.workstation_name }}\\\" \\r\\n            width=\\\"200\\\" \\r\\n            height=\\\"200\\\" />\\r\\n    </div>\\r\\n</div>\"}]",
+  "html": null,
+  "line_breaks": 0,
+  "margin_bottom": 15.0,
+  "margin_left": 15.0,
+  "margin_right": 15.0,
+  "margin_top": 15.0,
+  "modified": "2024-07-22 09:49:40.548684",
+  "module": "Manufacturing",
+  "name": "Workstation Qr Code",
+  "page_number": "Hide",
+  "print_format_builder": 1,
+  "print_format_builder_beta": 0,
+  "print_format_type": "Jinja",
+  "raw_commands": null,
+  "raw_printing": 0,
+  "show_section_headings": 0,
+  "standard": "No"
+ }
+]

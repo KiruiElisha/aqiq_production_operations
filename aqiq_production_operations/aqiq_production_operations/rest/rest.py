@@ -41,7 +41,7 @@ def create_and_rename_job_card(parent_job_card, remaining_qty):
         new_job_card.time_logs = []
         new_job_card.scrap_items = []
         new_job_card.docstatus = 0
-        new_job_card.custom_employee_list
+        new_job_card.custom_employee_list = []
         new_job_card.insert()
         
 
