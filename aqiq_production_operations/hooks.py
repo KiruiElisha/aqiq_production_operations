@@ -254,7 +254,14 @@ fixtures = [
             ["doc_type", "in", ["Work Order", "Job Card", "Workstation"]],
             ["standard", "=", "No"]
         ]
-    }
+    },
+    {
+        "dt": "Server Script",
+        "filters": [
+            ["name", "in", ["Job Card"]]
+        ]
+    },
+
 ]
 
 

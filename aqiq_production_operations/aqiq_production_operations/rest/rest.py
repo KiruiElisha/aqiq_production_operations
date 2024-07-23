@@ -29,10 +29,15 @@ def set_job_card_employees(job_card_name, employees):
         return f"Error: {str(e)}"
     
 
+import frappe
+
 @frappe.whitelist()
 def create_and_rename_job_card(parent_job_card, remaining_qty):
     try:
+        # Fetch the parent job card document
         parent_doc = frappe.get_doc("Job Card", parent_job_card)
+        
+        # Create a copy of the parent job card document
         new_job_card = frappe.copy_doc(parent_doc)
         new_job_card.status = 'Open'
         new_job_card.custom_is_active = False
@@ -42,18 +47,21 @@ def create_and_rename_job_card(parent_job_card, remaining_qty):
         new_job_card.scrap_items = []
         new_job_card.docstatus = 0
         new_job_card.custom_employee_list = []
+
+        # Insert the new job card document
         new_job_card.insert()
         
-
+        # Generate the new name
         new_name = f"{parent_job_card}-1"
-        new_job_card.rename(new_name)
-
-        return new_job_card.name
+        
+        # Set the new name
+        frappe.db.set_value("Job Card", new_job_card.name, "name", new_name)
+  
+        
+        return new_name
     except Exception as e:
-        frappe.log_error(f"Error in create_and_rename_job_card: {str(e)}")
+        frappe.log_error(f"Error in force_rename_job_card: {str(e)}")
         return None
-
-
 
 import frappe
 from frappe import _
