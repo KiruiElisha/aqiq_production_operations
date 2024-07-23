@@ -53,3 +53,74 @@ def create_and_rename_job_card(parent_job_card, remaining_qty):
         frappe.log_error(f"Error in create_and_rename_job_card: {str(e)}")
         return None
 
+
+
+import frappe
+from frappe import _
+from frappe.utils import now_datetime
+import json
+
+@frappe.whitelist()
+def start_job(job_card):
+    try:
+        job_card_doc = frappe.get_doc("Job Card", job_card)
+        employees = job_card_doc.get("custom_employee_list", [])
+        
+        for employee_row in employees:
+            make_time_log(job_card, employee_row.employee)
+        
+        job_card_doc.status = "Work In Progress"
+        job_card_doc.custom_is_active = True
+        job_card_doc.time_logs = []
+        job_card_doc.save()
+        
+        return "Success"
+    except Exception as e:
+        frappe.log_error(f"Error starting job: {str(e)}")
+        return "Error"
+
+def make_time_log(job_card, employee):
+    args = {
+        "job_card_id": job_card,
+        "employee": employee,
+        "completed_qty": 0,
+        "complete_time": now_datetime()
+    }
+    frappe.get_doc({
+        "doctype": "Job Card Time Log",
+        "parent": job_card,
+        "parenttype": "Job Card",
+        "parentfield": "time_logs",
+        **args
+    }).insert()
+
+@frappe.whitelist()
+def get_workstation_employees(workstation):
+    workstation_doc = frappe.get_doc("Workstation", workstation)
+    return workstation_doc.get("custom_employee_details", [])
+
+@frappe.whitelist()
+def set_job_card_employees_and_start(job_card_name, employees):
+    try:
+        employees = json.loads(employees)
+        job_card = frappe.get_doc("Job Card", job_card_name)
+        job_card.custom_employee_list = []
+        
+        for emp in employees:
+            job_card.append("custom_employee_list", {
+                "employee": emp["employee"],
+                "employee_name": emp["employee_name"]
+            })
+        
+        job_card.status = "Work In Progress"
+        job_card.custom_is_active = True
+        job_card.time_logs = []
+        job_card.save()
+        
+        for emp in employees:
+            make_time_log(job_card_name, emp["employee"])
+        
+        return "Success"
+    except Exception as e:
+        frappe.log_error(f"Error setting job card employees and starting: {str(e)}")
+        return "Error"

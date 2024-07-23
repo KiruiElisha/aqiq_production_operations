@@ -10,6 +10,8 @@ def update_job_card_status(job_card, status, is_active):
 
         job_card_doc.status = status
         job_card_doc.custom_is_active = is_active
+
+
         job_card_doc.save()
         frappe.db.commit()
 
@@ -20,6 +22,7 @@ def update_job_card_status(job_card, status, is_active):
     except Exception as e:
         frappe.db.rollback()
         return {"success": False, "message": "An error occurred while updating the Job Card status"}
+
 
 @frappe.whitelist()
 def update_job_progress(job_card, completed_qty):
@@ -65,3 +68,25 @@ def update_job_progress(job_card, completed_qty):
         frappe.db.rollback()
         return {"success": False, "message": "An error occurred while updating the Job Card progress"}
 
+@frappe.whitelist(allow_guest=True)
+def get_job_card_employees(job_card_id):
+    try:
+        # Fetch the Job Card document
+        job_card_doc = frappe.get_doc("Job Card", job_card_id)
+
+        # Extract the list of employees from the custom_employee_list field
+        employees = job_card_doc.custom_employee_list or []
+
+        # Map the employees to a simple list of employee IDs
+        employee_ids = [emp.employee for emp in employees]
+
+        return {
+            "success": True,
+            "employees": employee_ids
+        }
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "get_job_card_employees Error")
+        return {
+            "success": False,
+            "message": str(e)
+        }
