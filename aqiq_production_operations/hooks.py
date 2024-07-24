@@ -258,7 +258,7 @@ fixtures = [
     {
         "dt": "Server Script",
         "filters": [
-            ["name", "in", ["Job Card"]]
+            ["name", "in", ["Job Card","Job Card Time Log"]]
         ]
     },
 
