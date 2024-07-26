@@ -244,7 +244,7 @@ fixtures = [
     {
         "dt": "DocType",
         "filters": [
-            ["name", "in", ["Job Card Tool","Workstation Employee"]],
+            ["name", "in", ["Job Card Tool","Workstation Employee","Job Card Tool User Filters"]],
             ["custom", "=", 1]
         ]
     },

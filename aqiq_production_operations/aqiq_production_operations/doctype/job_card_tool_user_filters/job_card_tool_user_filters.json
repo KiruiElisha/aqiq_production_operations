@@ -1,0 +1,54 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2024-07-26 12:21:20.808958",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "user",
+  "job_card_status",
+  "filtered_workstations"
+ ],
+ "fields": [
+  {
+   "fieldname": "user",
+   "fieldtype": "Link",
+   "label": "User",
+   "options": "User"
+  },
+  {
+   "fieldname": "job_card_status",
+   "fieldtype": "Small Text",
+   "label": "Job Card Status"
+  },
+  {
+   "fieldname": "filtered_workstations",
+   "fieldtype": "Small Text",
+   "label": "Filtered Workstations"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2024-07-26 12:25:13.555193",
+ "modified_by": "Administrator",
+ "module": "AQIQ Production operations",
+ "name": "Job Card Tool User Filters",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
