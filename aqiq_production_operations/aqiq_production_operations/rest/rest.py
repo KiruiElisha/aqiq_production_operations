@@ -63,7 +63,7 @@ def create_and_rename_job_card(parent_job_card, remaining_qty):
         frappe.log_error(f"Error in force_rename_job_card: {str(e)}")
         return None
 
-
+import frappe
 from frappe import _
 from frappe.utils import now_datetime
 import json
@@ -160,11 +160,11 @@ def validate_job_card_sequence_id(job_card_name):
         sequence_groups[jc.sequence_id].append(jc)
 
     # Check if the sequence is in order
-    prev_seq_id = 0
-    for seq_id in sorted(sequence_groups.keys()):
-        if int(seq_id) != prev_seq_id + 1:
-            frappe.throw(_("Invalid Sequence ID {0}. Expected {1}").format(seq_id, prev_seq_id + 1))
-        prev_seq_id = int(seq_id)
+    # prev_seq_id = 0
+    # for seq_id in sorted(sequence_groups.keys()):
+    #     if int(seq_id) != prev_seq_id + 1:
+    #         frappe.throw(_("Invalid Sequence ID {0}. Expected {1}").format(seq_id, prev_seq_id + 1))
+    #     prev_seq_id = int(seq_id)
 
     # Find the current job card's position in the sequence
     current_group = next((group for group in sequence_groups.values() if job_card_name in [jc.name for jc in group]), None)
