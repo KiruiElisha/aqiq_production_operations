@@ -37,7 +37,7 @@
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2024-07-18 11:09:15.791395",
+ "modified": "2024-08-31 07:27:49.362397",
  "modified_by": "Administrator",
  "module": "AQIQ Production operations",
  "name": "Job Card Tool",
@@ -50,6 +50,26 @@
    "print": 1,
    "read": 1,
    "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "Manufacturing Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "Manufacturing User",
    "share": 1,
    "write": 1
   }

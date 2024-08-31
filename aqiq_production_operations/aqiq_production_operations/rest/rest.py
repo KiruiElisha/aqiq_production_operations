@@ -37,10 +37,31 @@ def create_and_rename_job_card(parent_job_card, remaining_qty):
         # Fetch the parent job card document
         parent_doc = frappe.get_doc("Job Card", parent_job_card)
         
+        # Update the for_quantity in the parent job card to match total_completed_qty
+        if parent_doc.docstatus == 1:  # Check if the document is already submitted
+            frappe.db.sql("""
+                UPDATE `tabJob Card`
+                SET for_quantity = %s
+                WHERE name = %s
+            """, (parent_doc.total_completed_qty, parent_job_card))
+            
+            # Submit the parent job card again
+            frappe.db.sql("""
+                UPDATE `tabJob Card`
+                SET docstatus = 1
+                WHERE name = %s
+            """, parent_job_card)
+        else:
+            parent_doc.for_quantity = parent_doc.total_completed_qty
+            parent_doc.save()
+            parent_doc.submit()
+        
         # Create a copy of the parent job card document
         new_job_card = frappe.copy_doc(parent_doc)
         new_job_card.status = 'Open'
         new_job_card.custom_is_active = False
+        
+        # Set the remaining quantity for the new job card
         new_job_card.for_quantity = float(remaining_qty)
         new_job_card.total_completed_qty = 0
         new_job_card.time_logs = []
@@ -56,12 +77,13 @@ def create_and_rename_job_card(parent_job_card, remaining_qty):
         
         # Set the new name
         frappe.db.set_value("Job Card", new_job_card.name, "name", new_name)
-  
         
         return new_name
     except Exception as e:
-        frappe.log_error(f"Error in force_rename_job_card: {str(e)}")
+        frappe.log_error(f"Error in create_and_rename_job_card: {str(e)}")
         return None
+
+
 
 import frappe
 from frappe import _
