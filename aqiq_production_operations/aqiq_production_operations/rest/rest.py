@@ -41,7 +41,7 @@ def create_and_rename_job_card(parent_job_card, remaining_qty):
         if parent_doc.docstatus == 1:  # Check if the document is already submitted
             frappe.db.sql("""
                 UPDATE `tabJob Card`
-                SET for_quantity = %s
+                SET for_quantity = %s, process_loss_qty = 0
                 WHERE name = %s
             """, (parent_doc.total_completed_qty, parent_job_card))
             
@@ -53,6 +53,7 @@ def create_and_rename_job_card(parent_job_card, remaining_qty):
             """, parent_job_card)
         else:
             parent_doc.for_quantity = parent_doc.total_completed_qty
+            parent_doc.process_loss = 0  # Set process loss to 0
             parent_doc.save()
             parent_doc.submit()
         

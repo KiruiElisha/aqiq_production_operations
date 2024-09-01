@@ -523,16 +523,13 @@ function getActionButtons(jobCard) {
 
 
 
-
-
-
-
 async function submitJob(frm, jobCard) {
     // Reload the document before any operation
     let doc = await frappe.db.get_doc('Job Card', jobCard);
     let qtyToManufacture = doc.for_quantity;
     let completedQty = doc.total_completed_qty || 0;
     let remainingQty = qtyToManufacture - completedQty;
+    
 
     // Reload the document again before submitting
     doc = await frappe.db.get_doc('Job Card', jobCard);
@@ -541,7 +538,12 @@ async function submitJob(frm, jobCard) {
     if (doc.status !== 'Completed') {
         let newCompletedQty = remainingQty;
         let totalCompletedQty = completedQty + newCompletedQty;
-        
+
+        // Set for_quantity to total_completed_qty before making the time log
+        await frappe.db.set_value('Job Card', jobCard, {
+            'for_quantity': totalCompletedQty
+        });
+
         await frappe.call({
             method: "erpnext.manufacturing.doctype.job_card.job_card.make_time_log",
             args: {
@@ -560,9 +562,8 @@ async function submitJob(frm, jobCard) {
         });
     }
 
-    // Reload the document before submitting
+    // Reload the document before saving
     doc = await frappe.db.get_doc('Job Card', jobCard);
-    doc.docstatus = 1;
 
     try {
         await frappe.call({
@@ -572,7 +573,7 @@ async function submitJob(frm, jobCard) {
             }
         });
 
-        frappe.show_alert({ message: __('Job Card submitted successfully.'), indicator: 'green' });
+        frappe.show_alert({ message: __('Job Card submitted.'), indicator: 'green' });
         
         if (remainingQty > 0) {
             createNewJobCard(frm, doc, remainingQty);
@@ -580,8 +581,8 @@ async function submitJob(frm, jobCard) {
             refreshJobCards(frm);
         }
     } catch (error) {
-        console.error("Error submitting Job Card:", error);
-        frappe.msgprint(__("Error submitting Job Card. The job card list will be refreshed."));
+        console.error("Error saving Job Card:", error);
+        frappe.msgprint(__("Error saving Job Card. The job card list will be refreshed."));
         refreshJobCards(frm);
     }
 }
