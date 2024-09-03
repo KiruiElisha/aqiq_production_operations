@@ -50,7 +50,7 @@ function loadFiltersFromServer(frm) {
 }
 
 function applyFilterSettings(frm, filters) {
-    frm.doc.job_card_status = filters.job_card_status || ['Open', 'Work In Progress'];
+    frm.doc.job_card_status = filters.job_card_status || ['Open', 'Work In Progress',"On Hold"];
     frm.doc.filtered_workstations = filters.filtered_workstations || '';
     frm.refresh_field('job_card_status');
     frm.refresh_field('filtered_workstations');
@@ -91,6 +91,9 @@ function saveFiltersToServer(frm) {
 }
 
 function promptForWorkstationConfiguration(frm) {
+    let scanTimeout;
+    const SCAN_DELAY = 100; // Reduced from 500ms to 100ms for faster response
+
     const d = new frappe.ui.Dialog({
         title: __('Configure Workstation'),
         fields: [
@@ -98,9 +101,19 @@ function promptForWorkstationConfiguration(frm) {
                 label: __('Scan Data'),
                 fieldname: 'scanned_data',
                 fieldtype: 'Data',
-                description: __('Scan or enter the encoded data here'),
-                reqd: 1
-            },
+                options: 'Barcode',
+                description: __('Scan QR Code or Barcode'),
+                reqd: 1,
+                onchange: () => {
+                    clearTimeout(scanTimeout);
+                    scanTimeout = setTimeout(() => {
+                        const scannedData = d.get_value('scanned_data');
+                        if (scannedData) {
+                            handleScannedData(frm, d, scannedData);
+                        }
+                    }, SCAN_DELAY);
+                }
+            },           
             {
                 label: __('Workstation'),
                 fieldname: 'workstation',
@@ -111,34 +124,148 @@ function promptForWorkstationConfiguration(frm) {
                 label: __('Password'),
                 fieldname: 'password',
                 fieldtype: 'Password',
-                reqd: 1
+                reqd: 0,
+                hidden: 1
             }
         ],
         primary_action_label: __('Apply'),
         primary_action(values) {
             applyWorkstationConfiguration(frm, values.workstation);
             d.hide();
-            frappe.show_alert({
-                message: __('Workstation configuration applied successfully'),
-                indicator: 'green'
-            });
-        }
-    });
-
-    d.fields_dict.scanned_data.input.addEventListener('change', function() {
-        const scannedData = this.value;
-        try {
-            const decodedData = decodeScannedData(scannedData);
-            d.set_value('workstation', decodedData.workstation);
-            d.set_value('password', decodedData.password);
-            d.get_primary_btn().prop('disabled', false);
-        } catch (error) {
-            frappe.msgprint(__("Invalid scanned data: ") + error.message);
-            d.get_primary_btn().prop('disabled', true);
+            showSuccessMessage();
         }
     });
 
     d.show();
+
+    // Add QR code scanner icon after dialog is shown
+    setTimeout(() => {
+        const $input = d.fields_dict.scanned_data.$input;
+        $input.attr('autocomplete', 'off'); // Disable browser autocomplete
+        $input.attr('spellcheck', 'false'); // Disable spellcheck
+        $input.attr('autocorrect', 'off'); // Disable autocorrect
+        $input.attr('autocapitalize', 'off'); // Disable autocapitalize
+        $input.css('padding-right', '30px'); // Make space for the icon
+        $input.after('<span class="qr-scanner-icon"><i class="fa fa-qrcode"></i></span>');
+        
+        // Style the QR scanner icon
+        const $icon = $input.next('.qr-scanner-icon');
+        $icon.css({
+            position: 'absolute',
+            right: '10px',
+            top: '50%',
+            transform: 'translateY(-50%)',
+            cursor: 'pointer',
+            color: 'var(--text-muted)'
+        });
+
+        // Bind click event to QR scan icon
+        $icon.on('click', () => {
+            frappe.require('qrcode.min.js', () => {
+                const scanner = new frappe.ui.Scanner({
+                    dialog: true,
+                    multiple: false,
+                    on_scan(data) {
+                        handleScannedData(frm, d, data);
+                    }
+                });
+                scanner.show();
+            });
+        });
+
+        // Prevent form submission on Enter key press
+        $input.on('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                const scannedData = $(this).val().trim();
+                if (scannedData) {
+                    handleScannedData(frm, d, scannedData);
+                }
+            }
+        });
+
+        $input.focus();
+    }, 0);
+}
+
+function handleScannedData(frm, dialog, scanned_data) {
+    try {
+        console.log("Raw scanned data:", scanned_data);
+        console.log("Type of scanned data:", typeof scanned_data);
+        
+        let decodedData;
+        if (typeof scanned_data === 'object' && scanned_data.hasOwnProperty('decodedText')) {
+            // If scanned_data is an object with a 'decodedText' property, use that
+            decodedData = decodeScannedData(scanned_data.decodedText);
+        } else if (typeof scanned_data === 'string') {
+            // If scanned_data is already a string, use it directly
+            decodedData = decodeScannedData(scanned_data);
+        } else {
+            throw new Error("Unexpected scanned data format");
+        }
+        
+        dialog.set_value('workstation', decodedData.workstation);
+        dialog.set_value('password', decodedData.password);
+        
+        // Clear the scanned data field
+        dialog.set_value('scanned_data', '');
+        
+        // Immediately apply the configuration
+        applyWorkstationConfiguration(frm, decodedData.workstation);
+        dialog.hide();
+        showSuccessMessage();
+    } catch (error) {
+        console.error("Scanning error:", error);
+        frappe.show_alert({
+            message: __("Invalid scanned data: ") + error.message,
+            indicator: 'red'
+        });
+        dialog.set_value('scanned_data', '');
+        dialog.fields_dict.scanned_data.input.focus();
+    }
+}
+
+function decodeScannedData(scannedData) {
+    console.log("Attempting to decode:", scannedData);
+
+    let decoded;
+
+    try {
+        if (typeof scannedData !== 'string') {
+            throw new Error("Scanned data is not a string");
+        }
+
+        // Decode the base64 string
+        const jsonString = atob(scannedData);
+        console.log("Base64 decoded string:", jsonString);
+        
+        // Parse the JSON string
+        decoded = JSON.parse(jsonString);
+        console.log("Successfully parsed JSON:", decoded);
+    } catch (error) {
+        console.error("Decoding error:", error);
+        throw new Error("Failed to decode scanned data: " + error.message);
+    }
+
+    // Validate the decoded data structure
+    if (!decoded || typeof decoded !== 'object') {
+        throw new Error("Invalid QR code: Decoded data is not an object");
+    }
+    if (!decoded.workstation) {
+        throw new Error("Invalid QR code: Missing workstation");
+    }
+    if (!decoded.password) {
+        throw new Error("Invalid QR code: Missing password");
+    }
+
+    console.log("Successfully decoded data:", decoded);
+    return decoded;
+}
+function showSuccessMessage() {
+    frappe.show_alert({
+        message: __('Workstation configuration applied successfully'),
+        indicator: 'green'
+    });
 }
 
 function applyWorkstationConfiguration(frm, workstation) {
@@ -149,21 +276,9 @@ function applyWorkstationConfiguration(frm, workstation) {
     addWorkstationFilterButton(frm);
 }
 
-function decodeScannedData(scannedData) {
-    try {
-        const decoded = JSON.parse(atob(scannedData));
-        if (decoded.workstation && decoded.password) {
-            return decoded;
-        } else {
-            throw new Error("Missing workstation or password in decoded data");
-        }
-    } catch (error) {
-        throw new Error("Failed to decode scanned data: " + error.message);
-    }
-}
 
 function initializeJobCardStatus(frm) {
-    frm.doc.job_card_status = frm.doc.job_card_status || ['Open', 'Work In Progress'];
+    frm.doc.job_card_status = frm.doc.job_card_status || ['Open', 'Work In Progress',"On Hold"];
 }
 
 function addFilterButtons(frm) {
@@ -804,14 +919,7 @@ function selectEmployees(jobCardDoc) {
                                         fieldtype: 'Link',
                                         options: 'Employee',
                                         label: __('Employee'),
-                                        in_list_view: 1,
-                                        get_query: () => {
-                                            return {
-                                                filters: [
-                                                    ['name', 'in', employees.map(e => e.employee)]
-                                                ]
-                                            };
-                                        }
+                                        in_list_view: 1,                                       
                                     },
                                     {
                                         fieldname: 'employee_name',
