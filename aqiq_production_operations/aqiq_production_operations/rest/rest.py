@@ -169,9 +169,9 @@ def validate_job_card_sequence_id(job_card_name):
 
     # Get all job cards for the work order, including those not started
     # Check if the work order has started
-    work_order = frappe.get_doc("Work Order", job_card.work_order)
-    if work_order.status not in ["In Process", "Completed"]:
-        frappe.throw(_("Work Order {0} must be started before starting Job Card {1}").format(job_card.work_order, job_card_name))
+    # work_order = frappe.get_doc("Work Order", job_card.work_order)
+    # if work_order.status not in ["In Process", "Completed"]:
+    #     frappe.throw(_("Work Order {0} must be started before starting Job Card {1}").format(job_card.work_order, job_card_name))
 
     all_job_cards = frappe.get_all(
         "Job Card",

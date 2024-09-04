@@ -444,38 +444,71 @@ async function renderJobCardTile(jobCard) {
     const itemNameResult = await frappe.db.get_value('Job Card', jobCard.name, 'production_item');
     const itemName = itemNameResult.message.production_item || 'N/A';
     
-  return `
-    <div class="job-card-tile ${jobCard.custom_is_active === "1" ? 'active-job-card' : ''}">
-        <div class="job-card-header" style="background-color: ${getStatusColor(jobCard.status)};">
-            <div class="job-card-name">
-                <a href="#" class="job-card-link" data-route="Form/Job Card/${encodeURIComponent(jobCard.name)}">${jobCard.name}</a>
-            </div>
-            <div class="job-card-status">
-                ${jobCard.status}
-            </div>
-        </div>
-        <div class="job-card-body">
-            <p><strong>Customer:</strong> <span style="font-size: 1.2em; font-weight: bold;">${customerName}</span></p>
-            <p><strong>Item:</strong> 
-                <a href="/app/item/${encodeURIComponent(itemName)}" class="item-link">${itemName}</a>
-            </p>
-            <p><strong>Operation:</strong> ${jobCard.operation}</p>
-            <p><strong>Workstation:</strong> ${jobCard.workstation}</p>
-            <p><strong>Started At:</strong> ${formatDateTime(jobCard.actual_start_date)}</p>
-            <p><strong>Work Order:</strong> 
-                <a href="#" class="work-order-link" data-route="Form/Work Order/${encodeURIComponent(jobCard.work_order)}">${jobCard.work_order}</a>
-            </p>
-            <p><strong>Qty:</strong> ${jobCard.total_completed_qty} / ${jobCard.for_quantity}</p>
-            <p><strong>Active:</strong> ${jobCard.custom_is_active === "1" ? 'Yes' : 'No'}</p>
-        </div>
-        <div class="job-card-actions">
-            ${getActionButtons(jobCard)}
-        </div>
-    </div>
-`;
+    // Fetch Material Request details
+    const mrDetails = await getMaterialRequestDetails(jobCard.name);
 
+    let mrInfo = '';
+    if (mrDetails.hasMaterialRequest) {
+        mrInfo = `<p><strong>Materials:</strong> ${mrDetails.hasReceivedQty ? '<span style="color: green;">Transferred</span>' : '<span style="color: red;">Not transferred</span>'}</p>`;
+    }
 
+    return `
+        <div class="job-card-tile ${jobCard.custom_is_active === "1" ? 'active-job-card' : ''}">
+            <div class="job-card-header" style="background-color: ${getStatusColor(jobCard.status)};">
+                <div class="job-card-name">
+                    <a href="#" class="job-card-link" data-route="Form/Job Card/${encodeURIComponent(jobCard.name)}">${jobCard.name}</a>
+                </div>
+                <div class="job-card-status">
+                    ${jobCard.status}
+                </div>
+            </div>
+            <div class="job-card-body">
+                <p><strong>Customer:</strong> <span style="font-size: 1.2em; font-weight: bold;">${customerName}</span></p>
+                <p><strong>Item:</strong> 
+                    <a href="/app/item/${encodeURIComponent(itemName)}" class="item-link">${itemName}</a>
+                </p>
+                <p><strong>Operation:</strong> ${jobCard.operation}</p>
+                <p><strong>Workstation:</strong> ${jobCard.workstation}</p>
+                <p><strong>Started At:</strong> ${formatDateTime(jobCard.actual_start_date)}</p>
+                <p><strong>Work Order:</strong> 
+                    <a href="#" class="work-order-link" data-route="Form/Work Order/${encodeURIComponent(jobCard.work_order)}">${jobCard.work_order}</a>
+                </p>
+                <p><strong>Qty:</strong> ${jobCard.total_completed_qty} / ${jobCard.for_quantity}</p>
+                <p><strong>Active:</strong> ${jobCard.custom_is_active === "1" ? 'Yes' : 'No'}</p>
+                ${mrInfo}
+            </div>
+            <div class="job-card-actions">
+                ${getActionButtons(jobCard)}
+            </div>
+        </div>
+    `;
 }
+
+async function getMaterialRequestDetails(jobCardName) {
+    try {
+        const result = await frappe.db.get_list('Material Request', {
+            filters: { 'job_card': jobCardName },
+            fields: ['name']
+        });
+
+        if (result.length === 0) {
+            return { hasMaterialRequest: false };
+        }
+
+        const mrItems = await frappe.db.get_list('Material Request Item', {
+            filters: { 'parent': result[0].name },
+            fields: ['received_qty']
+        });
+
+        const hasReceivedQty = mrItems.some(item => item.received_qty > 0);
+
+        return { hasMaterialRequest: true, hasReceivedQty: hasReceivedQty };
+    } catch (error) {
+        console.error("Error fetching Material Request details:", error);
+        return { hasMaterialRequest: false };
+    }
+}
+
 function getEmployeeDisplay(jobCard) {
     return jobCard.employee && jobCard.employee.length > 0 ? jobCard.employee.map(emp => emp.employee).join(', ') : 'Not Assigned';
 }
