@@ -48,88 +48,88 @@ def generate_qr_code_button(workstation_name):
     return encoded_data
 
 import frappe
-from frappe.utils.pdf import get_pdf
-from urllib.parse import quote
-import json
+from frappe import _
+from frappe.utils import get_files_path
+import os
+from reportlab.lib.pagesizes import A4
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import cm
+from reportlab.graphics.shapes import Drawing
+from reportlab.graphics.barcode.qr import QrCodeWidget
+from reportlab.graphics import renderPDF
+from reportlab.lib.colors import HexColor
+from reportlab.platypus import Frame, PageTemplate, FrameBreak
 
 @frappe.whitelist()
 def custom_print_qr_codes(workstations):
-    # Parse the JSON string if it's provided as a string
-    if isinstance(workstations, str):
-        try:
-            workstations = json.loads(workstations)
-        except json.JSONDecodeError:
-            frappe.throw("Invalid JSON format for workstations.")
+    workstations = frappe.parse_json(workstations)
     
-    # Ensure that workstations is a list of dictionaries
-    if not isinstance(workstations, list) or not all(isinstance(ws, dict) for ws in workstations):
-        frappe.throw("Workstations should be a list of dictionaries.")
+    # Prepare the PDF
+    file_name = f"Workstation_QR_Codes_{frappe.utils.now()}.pdf"
+    file_path = os.path.join(get_files_path(), file_name)
+    doc = SimpleDocTemplate(file_path, pagesize=A4)
 
-    # Generate the HTML content
-    html = '''
-    <html>
-        <head>
-            <style>
-                body {
-                    font-family: Arial, sans-serif;
-                    text-align: center;
-                }
-                .qr-code-container {
-                    margin: 20px;
-                    padding: 10px;
-                    background-color: #f8f8f8;
-                    border-radius: 8px;
-                    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-                }
-                .qr-code-title {
-                    font-size: 18px;
-                    font-weight: bold;
-                    color: #333;
-                    margin-bottom: 10px;
-                }
-                .qr-code-image {
-                    max-width: 200px;
-                    max-height: 200px;
-                }
-                .qr-code {
-                    margin-bottom: 40px; /* Adjust spacing between QR codes */
-                }
-            </style>
-        </head>
-        <body>
-    '''
-    
+    # Prepare styles
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle('Title', parent=styles['Heading1'], alignment=1, spaceAfter=1*cm, textColor=HexColor("#1a237e"))
+    name_style = ParagraphStyle('Name', parent=styles['Normal'], alignment=1, fontSize=14, textColor=HexColor("#303f9f"))
+
+    # Create a frame for centered content
+    frame_width = A4[0] - 4*cm
+    frame_height = A4[1] - 4*cm
+    frame = Frame(2*cm, 2*cm, frame_width, frame_height, id='centered_frame')
+
+    # Create a PageTemplate with the centered frame
+    template = PageTemplate(id='centered_template', frames=[frame])
+    doc.addPageTemplates([template])
+
+    # Prepare content
+    content = []
+    content.append(Paragraph("Workstation QR Codes", title_style))
+
     for workstation in workstations:
-        # Handle cases where 'qr_code' might be missing
-        qr_code = workstation.get('qr_code', 'No QR Code Available')
-        qr_code_url = f"https://api.qrserver.com/v1/create-qr-code/?data={quote(qr_code)}&size=200x200"
-        html += f'''
-        <div class="qr-code">
-            <div class="qr-code-container">
-                <div class="qr-code-title">{workstation.get('name', 'Unnamed Workstation')}</div>
-                <img src="{qr_code_url}" alt="QR Code" class="qr-code-image" />
-            </div>
-        </div>
-        '''
-    
-    html += '''
-        </body>
-    </html>
-    '''
-    
-    # Convert HTML to PDF
-    pdf = get_pdf(html)
-    
-    # Save the PDF and return the URL
+        # Fetch the workstation document to get the custom_workstation_qr_code
+        workstation_doc = frappe.get_doc("Workstation", workstation['name'])
+        qr_code_data = workstation_doc.custom_workstation_qr_code
+
+        if not qr_code_data:
+            frappe.msgprint(f"No QR code data found for workstation {workstation['name']}")
+            continue
+
+        # Create QR code
+        qr_code = QrCodeWidget(qr_code_data)
+        qr_code.barWidth = 5*cm
+        qr_code.barHeight = 5*cm
+        d = Drawing(5*cm, 5*cm)
+        d.add(qr_code)
+        
+        # Center the QR code with the accompanying text
+        content.append(Spacer(1, 1*cm))
+        content.append(Paragraph(f"WS: {workstation['name']}", name_style))
+        content.append(Spacer(1, 0.5*cm))
+        content.append(d)
+        content.append(Spacer(1, 2*cm))  # Add more space between QR codes
+
+    if not content[1:]:
+        frappe.throw("No valid QR code data found for any selected workstations")
+
+    # Build the PDF
+    doc.build(content)
+
+    # Create a File document
+    file_url = f"/files/{file_name}"
     file_doc = frappe.get_doc({
         "doctype": "File",
-        "file_name": "Workstation_QR_Codes.pdf",
+        "file_name": file_name,
+        "file_url": file_url,
         "is_private": 0,
-        "content": pdf,
-        "decode": False
+        "folder": "Home"
     })
-    file_doc.save()
-    
-    return file_doc.file_url
+    file_doc.insert(ignore_permissions=True)
+
+    return file_url
+
+
 
 
