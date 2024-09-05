@@ -23,6 +23,17 @@ frappe.ui.form.on('Job Card Tool', {
         clearInterval(frm.auto_refresh_interval);
     }
 });
+function checkLoginStatus(frm) {
+    const isLoggedIn = localStorage.getItem('logged_in_workstation') !== null;
+    if (isLoggedIn) {
+        loadFiltersFromServer(frm);
+    } else {
+        frm.doc.filtered_workstations = '';
+        frm.refresh_field('filtered_workstations');
+        $(frm.fields_dict['workstation_dashboard'].wrapper).empty();
+        frm.page.clear_actions_menu();
+    }
+}
 
 function loadFiltersFromServer(frm) {
     frappe.call({
@@ -50,7 +61,7 @@ function loadFiltersFromServer(frm) {
 }
 
 function applyFilterSettings(frm, filters) {
-    frm.doc.job_card_status = filters.job_card_status || ['Open', 'Work In Progress',"On Hold"];
+    frm.doc.job_card_status = filters.job_card_status || ['Open', 'Work In Progress', 'On Hold', 'Material Transferred'];
     frm.doc.filtered_workstations = filters.filtered_workstations || '';
     frm.refresh_field('job_card_status');
     frm.refresh_field('filtered_workstations');
@@ -278,7 +289,7 @@ function applyWorkstationConfiguration(frm, workstation) {
 
 
 function initializeJobCardStatus(frm) {
-    frm.doc.job_card_status = frm.doc.job_card_status || ['Open', 'Work In Progress',"On Hold"];
+    frm.doc.job_card_status = frm.doc.job_card_status || ['Open', 'Work In Progress', 'On Hold', 'Material Transferred'];
 }
 
 function addFilterButtons(frm) {
@@ -287,7 +298,7 @@ function addFilterButtons(frm) {
 }
 
 function addStatusFilterButton(frm) {
-    const statuses = ['Open', 'Work In Progress', 'On Hold', 'Completed', 'Cancelled'];
+    const statuses = ['Open', 'Work In Progress', 'On Hold', 'Completed', 'Cancelled', 'Material Transferred'];
 
     frm.page.add_inner_button(__('Filter Status'), function() {
         new frappe.ui.Dialog({
@@ -375,7 +386,7 @@ function refreshJobCards(frm) {
     if (frm.doc.__islocal || !frm.doc.filtered_workstations) return;
 
     let filters = {
-        'status': ['in', frm.doc.job_card_status || ['Open', 'Work In Progress', 'On Hold', 'Completed', 'Cancelled']],
+        'status': ['in', frm.doc.job_card_status || ['Open', 'Work In Progress', 'On Hold', 'Completed', 'Cancelled', 'Material Transferred']],
         'workstation': ['in', frm.doc.filtered_workstations.split(',')]
     };
 
@@ -405,7 +416,7 @@ async function renderJobCards(frm, jobCards) {
 
     const groupedJobCards = groupJobCardsByStatus(jobCards);
 
-    const statusOrder = ['Work In Progress', 'Open', 'On Hold', 'Completed', 'Cancelled'];
+    const statusOrder = ['Work In Progress', 'Open', 'Material Transferred', 'On Hold', 'Completed', 'Cancelled'];
 
     const htmlPromises = statusOrder.map(async (status) => {
         if (!groupedJobCards[status] || groupedJobCards[status].length === 0) return '';
@@ -507,7 +518,8 @@ async function getMaterialRequestDetails(jobCardName) {
         console.error("Error fetching Material Request details:", error);
         return { hasMaterialRequest: false };
     }
-}
+}'u\
+;'
 
 function getEmployeeDisplay(jobCard) {
     return jobCard.employee && jobCard.employee.length > 0 ? jobCard.employee.map(emp => emp.employee).join(', ') : 'Not Assigned';
@@ -643,16 +655,14 @@ function getActionButtons(jobCard) {
     const hasStarted = jobCard.status === 'Work In Progress' || jobCard.status === 'On Hold';
     const isNotActive = jobCard.custom_is_active == 0;
 
-    // Existing logic for other buttons
     if (jobCard.total_completed_qty < jobCard.for_quantity) {
         if (jobCard.custom_is_active == 1) {
-            // Buttons for when the job card is active
             buttons += `
                 <button class="btn btn-warning btn-xs btn-pause" data-job-card="${jobCard.name}">Pause</button>
                 <button class="btn btn-success btn-xs btn-complete" data-job-card="${jobCard.name}">Complete</button>
             `;
         } else {
-            if (jobCard.status === 'Open' || (jobCard.status === 'Work In Progress' && remainingQty > 0)) {
+            if (jobCard.status === 'Open' || jobCard.status === 'Material Transferred' || (jobCard.status === 'Work In Progress' && remainingQty > 0)) {
                 buttons += `<button class="btn btn-primary btn-xs btn-start" data-job-card="${jobCard.name}">Start</button>`;
             }
             if (jobCard.status === 'On Hold' && remainingQty > 0) {
@@ -661,14 +671,12 @@ function getActionButtons(jobCard) {
         }
     }
 
-    // Show submit button if job card is Work In Progress or On Hold and is not active
     if (hasStarted && (jobCard.custom_is_active == 0 || jobCard.total_completed_qty > 0)) {
         buttons += `<button class="btn btn-info btn-xs btn-submit" data-job-card="${jobCard.name}">Submit</button>`;
     }
 
     return buttons;
 }
-
 
 
 async function submitJob(frm, jobCard) {
@@ -819,7 +827,7 @@ function truncateList(list, maxItems) {
 }
 
 function clearAllFilters(frm) {
-    frm.doc.job_card_status = ['Open', 'Work In Progress', 'On Hold', 'Completed', 'Cancelled'];
+    frm.doc.job_card_status = ['Open', 'Work In Progress', 'On Hold', 'Completed', 'Cancelled', 'Material Transferred'];
     frm.doc.filtered_workstations = '';
     saveFiltersToServer(frm);
     refreshJobCards(frm);
@@ -1121,7 +1129,8 @@ function getStatusColor(status) {
         "Work In Progress": "#7575ff",
         "On Hold": "#f43",
         "Completed": "#28a745",
-        "Cancelled": "#ff5858"
+        "Cancelled": "#ff5858",
+        "Material Transferred": "#5bc0de" // Light blue color for Material Transferred status
     };
     return colors[status] || "#d1d8dd";
 }
@@ -1203,4 +1212,33 @@ function addCustomCSS() {
         </style>
     `;
     $(style).appendTo('head');
+}
+
+$(document).on('app_ready', function() {
+    if (frappe.app) {
+        frappe.app.on('logout', function() {
+            logoutJobCardTool();
+        });
+    }
+});
+
+function logoutJobCardTool() {
+    console.log("Logging out Job Card Tool");
+    localStorage.removeItem('job_card_filters');
+    localStorage.removeItem('logged_in_workstation');
+
+    // Clear user filters on the server
+    frappe.call({
+        method: "aqiq_production_operations.aqiq_production_operations.rest.job_card_filters.clear_user_filters",
+        callback: function(r) {
+            if (r.message && r.message.success) {
+                console.log("Job Card Tool filters cleared successfully");
+            } else {
+                console.error("Failed to clear Job Card Tool filters");
+            }
+        },
+        error: function(err) {
+            console.error("Error during Job Card Tool logout:", err);
+        }
+    });
 }
