@@ -9,9 +9,8 @@ frappe.ui.form.on('Job Card Tool', {
         loadFiltersFromServer(frm);
         addWorkstationFilterButton(frm);
 
-        if (!frm.auto_refresh_interval) {
-            frm.auto_refresh_interval = setInterval(() => refreshJobCards(frm), 30000);
-        }
+        // Remove the setInterval and use a more efficient refresh mechanism
+        setupRefreshMechanism(frm);
 
         addFilterButtons(frm);
         frm.disable_save();
@@ -20,9 +19,139 @@ frappe.ui.form.on('Job Card Tool', {
         initializeJobCardStatus(frm);
     },
     on_unload: function(frm) {
-        clearInterval(frm.auto_refresh_interval);
+        // Clear any existing intervals or event listeners
+        if (frm.auto_refresh_interval) {
+            clearInterval(frm.auto_refresh_interval);
+        }
+        frappe.realtime.off('job_card_update');
     }
 });
+
+function setupRefreshMechanism(frm) {
+    // Clear any existing interval
+    if (frm.auto_refresh_interval) {
+        clearInterval(frm.auto_refresh_interval);
+    }
+
+    // Set up real-time updates
+    frappe.realtime.off('job_card_update');
+    frappe.realtime.on('job_card_update', function() {
+        silentlyUpdateJobCards(frm);
+    });
+
+    // Initial refresh
+    refreshJobCards(frm);
+
+    // Set up a less frequent background refresh
+    frm.auto_refresh_interval = setInterval(() => {
+        if (!document.hidden) {
+            silentlyUpdateJobCards(frm);
+        }
+    }, 60000); // Silently update every minute when the tab is visible
+}
+
+async function silentlyUpdateJobCards(frm) {
+    try {
+        const response = await frm.call({
+            method: 'get_job_cards',
+            args: {
+                status: frm.doc.job_card_status || ['Open', 'Work In Progress', 'On Hold', 'Completed', 'Cancelled', 'Material Transferred'],
+                workstations: frm.doc.filtered_workstations.split(',')
+            },
+            freeze: false
+        });
+
+        if (response.message) {
+            const $wrapper = $(frm.fields_dict['workstation_dashboard'].wrapper);
+            const jobCards = response.message;
+            const groupedJobCards = groupJobCardsByStatus(jobCards);
+            
+            await updateJobCardGroups($wrapper, groupedJobCards);
+            
+            removeNonExistentJobCards($wrapper, jobCards);
+            updateGroupCounts($wrapper);
+            
+            bindActionEvents(frm);
+            bindLinkEvents();
+        }
+    } catch (error) {
+        console.error("Error updating job cards:", error);
+        frappe.msgprint(__("An error occurred while updating job cards. Please refresh the page."));
+    }
+}
+
+function groupJobCardsByStatus(jobCards) {
+    return jobCards.reduce((acc, jobCard) => {
+        if (jobCard.status && typeof jobCard.status === 'string') {
+            if (!acc[jobCard.status]) {
+                acc[jobCard.status] = [];
+            }
+            acc[jobCard.status].push(jobCard);
+        } else {
+            console.warn(`Job card ${jobCard.name} has an invalid status:`, jobCard.status);
+        }
+        return acc;
+    }, {});
+}
+
+async function updateJobCardGroups($wrapper, groupedJobCards) {
+    const statusOrder = ['Work In Progress', 'Open', 'Material Transferred', 'On Hold', 'Completed', 'Cancelled'];
+    
+    for (const status of statusOrder) {
+        let $group = $wrapper.find(`.job-cards-group[data-status="${status}"]`);
+        
+        if (groupedJobCards[status] && groupedJobCards[status].length > 0) {
+            const jobCardTiles = await Promise.all(groupedJobCards[status].map(renderJobCardTile));
+            
+            if ($group.length === 0) {
+                $group = $(`
+                    <div class="job-cards-group" data-status="${status}">
+                        <h3>${status}</h3>
+                        <div class="job-cards-grid"></div>
+                    </div>
+                `);
+                $wrapper.append($group);
+            }
+            
+            const $grid = $group.find('.job-cards-grid');
+            $grid.empty().append(jobCardTiles);
+        } else if ($group.length > 0) {
+            $group.remove();
+        }
+    }
+
+    // Remove any groups that are not in the statusOrder
+    $wrapper.find('.job-cards-group').each(function() {
+        const groupStatus = $(this).data('status');
+        if (!statusOrder.includes(groupStatus)) {
+            $(this).remove();
+        }
+    });
+}
+
+function removeNonExistentJobCards($wrapper, jobCards) {
+    const currentJobCardNames = jobCards.map(jc => jc.name);
+    $wrapper.find('.job-card-tile').each(function() {
+        const jobCardName = $(this).data('job-card');
+        if (!currentJobCardNames.includes(jobCardName)) {
+            $(this).remove();
+        }
+    });
+}
+
+function updateGroupCounts($wrapper) {
+    $wrapper.find('.job-cards-group').each(function() {
+        const $group = $(this);
+        const status = $group.data('status');
+        const count = $group.find('.job-card-tile').length;
+        $group.find('h3').text(`${status} (${count})`);
+        if (count === 0) {
+            $group.remove();
+        }
+    });
+}
+
+
 function checkLoginStatus(frm) {
     const isLoggedIn = localStorage.getItem('logged_in_workstation') !== null;
     if (isLoggedIn) {
@@ -382,34 +511,34 @@ function getCustomerName(workOrder) {
     });
 }
 
+let previousJobCardsData = {};
+
 function refreshJobCards(frm) {
     if (frm.doc.__islocal || !frm.doc.filtered_workstations) return;
 
-    let filters = {
-        'status': ['in', frm.doc.job_card_status || ['Open', 'Work In Progress', 'On Hold', 'Completed', 'Cancelled', 'Material Transferred']],
-        'workstation': ['in', frm.doc.filtered_workstations.split(',')]
-    };
+    const lastScrollPosition = window.pageYOffset;
 
-    frappe.call({
-        method: "frappe.client.get_list",
+    frm.call({
+        method: 'get_job_cards',
         args: {
-            doctype: 'Job Card',
-            filters: filters,
-            fields: [
-                'name', 'workstation', 'operation', 'employee', 'started_time', 
-                'status', 'work_order', 'for_quantity', 'total_completed_qty', 'custom_is_active'
-            ]
+            status: frm.doc.job_card_status || ['Open', 'Work In Progress', 'On Hold', 'Completed', 'Cancelled', 'Material Transferred'],
+            workstations: frm.doc.filtered_workstations.split(',')
         },
+        freeze: false,
         callback: function(r) {
             if (r.message) {
                 renderJobCards(frm, r.message);
                 addJobCardActions(frm, r.message);
+                frm.page.set_indicator('Updated', 'green');
                 updateFilterIndicator(frm);
+                
+                
+                // Restore scroll position after rendering
+                setTimeout(() => window.scrollTo(0, lastScrollPosition), 0);
             }
         }
     });
 }
-
 async function renderJobCards(frm, jobCards) {
     const $wrapper = $(frm.fields_dict['workstation_dashboard'].wrapper);
     $wrapper.empty();
@@ -440,15 +569,6 @@ async function renderJobCards(frm, jobCards) {
     bindLinkEvents();
 }
 
-function groupJobCardsByStatus(jobCards) {
-    return jobCards.reduce((acc, jobCard) => {
-        if (!acc[jobCard.status]) {
-            acc[jobCard.status] = [];
-        }
-        acc[jobCard.status].push(jobCard);
-        return acc;
-    }, {});
-}
 
 async function renderJobCardTile(jobCard) {
     const customerName = await getCustomerName(jobCard.work_order);
@@ -466,7 +586,7 @@ async function renderJobCardTile(jobCard) {
     }
 
     return `
-        <div class="job-card-tile ${jobCard.custom_is_active === "1" ? 'active-job-card' : ''}">
+       <div class="job-card-tile ${jobCard.custom_is_active === "1" ? 'active-job-card' : ''}" data-job-card="${jobCard.name}">
             <div class="job-card-header" style="background-color: ${getStatusColor(jobCard.status)};">
                 <div class="job-card-name">
                     <a href="#" class="job-card-link" data-route="Form/Job Card/${encodeURIComponent(jobCard.name)}">${jobCard.name}</a>
@@ -1154,11 +1274,12 @@ function addCustomCSS() {
                 gap: 20px;
             }
             .job-card-tile {
-                border: 1px solid #d1d8dd;
+                border: 1px solid var(--border-color);
                 border-radius: 8px;
                 overflow: hidden;
                 box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
                 transition: all 0.3s ease;
+                background-color: var(--card-bg);
             }
             .job-card-tile:hover {
                 box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
@@ -1174,12 +1295,13 @@ function addCustomCSS() {
             }
             .job-card-body {
                 padding: 15px;
-                background-color: #f8f9fa;
+                background-color: var(--card-bg);
+                color: var(--text-color);
                 transition: background-color 0.3s ease;
             }
             .job-card-body p {
                 margin-bottom: 8px;
-                opacity: 0.8;
+                opacity: 0.9;
                 transition: opacity 0.3s ease;
             }
             .job-card-tile:hover .job-card-body p {
@@ -1187,7 +1309,7 @@ function addCustomCSS() {
             }
             .job-card-actions {
                 padding: 10px;
-                background-color: #ffffff;
+                background-color: var(--card-bg);
                 text-align: right;
             }
             .btn {
@@ -1198,22 +1320,39 @@ function addCustomCSS() {
                 transform: scale(1.05);
             }
             .job-card-link, .work-order-link {
+                color: var(--link-color);
                 transition: color 0.3s ease;
             }
             .job-card-link:hover, .work-order-link:hover {
-                color: #007bff;
+                color: var(--link-hover-color);
             }
             .job-cards-group {
                 margin-bottom: 30px;
             }
-            
             .job-cards-group h3 {
                 margin-bottom: 15px;
                 padding-bottom: 5px;
-                border-bottom: 2px solid #d1d8dd;
+                border-bottom: 2px solid var(--border-color);
+                color: var(--heading-color);
             }
-            active-job-card {
-                border: 2px solid #28a745;
+            .active-job-card {
+                border: 2px solid var(--primary-color);
+            }
+            .dark-theme .job-card-body {
+                background-color: var(--gray-700);
+                color: var(--gray-100);
+            }
+            .dark-theme .job-card-actions {
+                background-color: var(--gray-800);
+            }
+            .dark-theme .job-card-tile {
+                border-color: var(--gray-600);
+            }
+            .dark-theme .job-card-link, .dark-theme .work-order-link {
+                color: var(--blue-400);
+            }
+            .dark-theme .job-card-link:hover, .dark-theme .work-order-link:hover {
+                color: var(--blue-300);
             }
         </style>
     `;
