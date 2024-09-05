@@ -499,6 +499,11 @@ async function renderJobCardTile(jobCard) {
 
 async function getMaterialRequestDetails(jobCardName) {
     try {
+        const jobCardDetails = await frappe.db.get_value('Job Card', jobCardName, 'status');
+        if (jobCardDetails.message.status === 'Material Transferred') {
+            return { hasMaterialRequest: true, hasReceivedQty: true };
+        }
+
         const result = await frappe.db.get_list('Material Request', {
             filters: { 'job_card': jobCardName },
             fields: ['name']
@@ -520,8 +525,7 @@ async function getMaterialRequestDetails(jobCardName) {
         console.error("Error fetching Material Request details:", error);
         return { hasMaterialRequest: false };
     }
-}'u\
-;'
+}
 
 function getEmployeeDisplay(jobCard) {
     return jobCard.employee && jobCard.employee.length > 0 ? jobCard.employee.map(emp => emp.employee).join(', ') : 'Not Assigned';
