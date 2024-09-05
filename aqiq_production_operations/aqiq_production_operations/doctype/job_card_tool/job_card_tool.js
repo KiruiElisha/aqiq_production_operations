@@ -459,7 +459,9 @@ async function renderJobCardTile(jobCard) {
     const mrDetails = await getMaterialRequestDetails(jobCard.name);
 
     let mrInfo = '';
-    if (mrDetails.hasMaterialRequest) {
+    if (jobCard.status === 'Material Transferred') {
+        mrInfo = `<p><strong>Materials:</strong> <span style="color: green;">Transferred</span></p>`;
+    } else if (mrDetails.hasMaterialRequest) {
         mrInfo = `<p><strong>Materials:</strong> ${mrDetails.hasReceivedQty ? '<span style="color: green;">Transferred</span>' : '<span style="color: red;">Not transferred</span>'}</p>`;
     }
 
