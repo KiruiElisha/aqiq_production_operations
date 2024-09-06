@@ -826,6 +826,7 @@ function getActionButtons(jobCard) {
     const remainingQty = jobCard.for_quantity - (jobCard.total_completed_qty || 0);
     const hasStarted = jobCard.status === 'Work In Progress' || jobCard.status === 'On Hold';
     const isNotActive = jobCard.custom_is_active == 0;
+    const isMaterialTransferred = jobCard.status === 'Material Transferred';
 
     if (jobCard.total_completed_qty < jobCard.for_quantity) {
         if (jobCard.custom_is_active == 1) {
@@ -834,7 +835,10 @@ function getActionButtons(jobCard) {
                 <button class="btn btn-success btn-xs btn-complete" data-job-card="${jobCard.name}">Complete</button>
             `;
         } else {
-            if (jobCard.status === 'Open' || jobCard.status === 'Material Transferred' || (jobCard.status === 'Work In Progress' && remainingQty > 0)) {
+            if (jobCard.status === 'Open' || (jobCard.status === 'Work In Progress' && remainingQty > 0)) {
+                buttons += `<button class="btn btn-primary btn-xs btn-start" data-job-card="${jobCard.name}" ${!isMaterialTransferred ? 'disabled' : ''}>Start</button>`;
+            }
+            if (jobCard.status === 'Material Transferred' && remainingQty > 0) {
                 buttons += `<button class="btn btn-primary btn-xs btn-start" data-job-card="${jobCard.name}">Start</button>`;
             }
             if (jobCard.status === 'On Hold' && remainingQty > 0) {
