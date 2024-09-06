@@ -52,11 +52,12 @@ function setupRefreshMechanism(frm) {
 
 async function silentlyUpdateJobCards(frm) {
     try {
+        const filters = JSON.parse(localStorage.getItem('job_card_filters') || '{}');
         const response = await frm.call({
             method: 'get_job_cards',
             args: {
-                status: frm.doc.job_card_status || ['Open', 'Work In Progress', 'On Hold', 'Completed', 'Cancelled', 'Material Transferred'],
-                workstations: frm.doc.filtered_workstations.split(',')
+                status: filters.job_card_status || ['Open', 'Work In Progress', 'On Hold', 'Completed', 'Cancelled', 'Material Transferred'],
+                workstations: filters.filtered_workstations ? filters.filtered_workstations.split(',') : []
             },
             freeze: false
         });
@@ -79,7 +80,6 @@ async function silentlyUpdateJobCards(frm) {
         frappe.msgprint(__("An error occurred while updating job cards. Please refresh the page."));
     }
 }
-
 function groupJobCardsByStatus(jobCards) {
     return jobCards.reduce((acc, jobCard) => {
         if (jobCard.status && typeof jobCard.status === 'string') {
@@ -139,16 +139,25 @@ function removeNonExistentJobCards($wrapper, jobCards) {
     });
 }
 
-function updateGroupCounts($wrapper) {
-    $wrapper.find('.job-cards-group').each(function() {
-        const $group = $(this);
-        const status = $group.data('status');
-        const count = $group.find('.job-card-tile').length;
-        $group.find('h3').text(`${status} (${count})`);
-        if (count === 0) {
-            $group.remove();
-        }
-    });
+function moveJobCardToGroup(jobCardName, newStatus) {
+    const $jobCard = $(`.job-card-tile:has(a[data-route="Form/Job Card/${jobCardName}"])`);
+    const $newGroup = $(`.job-cards-group:has(h3:contains("${newStatus}"))`);
+    
+    if ($newGroup.length === 0) {
+        // If the new group doesn't exist, create it
+        const $newGroup = $(`
+            <div class="job-cards-group">
+                <h3>${newStatus} (1)</h3>
+                <div class="job-cards-grid"></div>
+            </div>
+        `);
+        $newGroup.insertAfter($('.job-cards-group').last());
+        $newGroup.find('.job-cards-grid').append($jobCard);
+    } else {
+        $newGroup.find('.job-cards-grid').append($jobCard);
+    }
+
+    updateGroupCounts();
 }
 
 
@@ -197,7 +206,6 @@ function applyFilterSettings(frm, filters) {
     localStorage.setItem('job_card_filters', JSON.stringify(filters));
     refreshJobCards(frm);
 }
-
 function saveFiltersToServer(frm) {
     const filters = {
         job_card_status: frm.doc.job_card_status,
@@ -207,7 +215,7 @@ function saveFiltersToServer(frm) {
     frappe.call({
         method: "aqiq_production_operations.aqiq_production_operations.rest.job_card_filters.save_user_filters",
         args: {
-            filters: JSON.stringify(filters) // Convert to JSON string
+            filters: JSON.stringify(filters)
         },
         callback: function(r) {
             if (r.message && r.message.success) {
@@ -409,10 +417,14 @@ function showSuccessMessage() {
 }
 
 function applyWorkstationConfiguration(frm, workstation) {
-    frm.doc.filtered_workstations = workstation;
+    const filters = {
+        job_card_status: ['Open', 'Work In Progress', 'On Hold', 'Material Transferred'],
+        filtered_workstations: workstation
+    };
+    localStorage.setItem('job_card_filters', JSON.stringify(filters));
+    localStorage.setItem('logged_in_workstation', workstation);
+    applyFilterSettings(frm, filters);
     saveFiltersToServer(frm);
-    localStorage.setItem('logged_in_workstation', workstation); // Set login state
-    frm.refresh_field('filtered_workstations');
     addWorkstationFilterButton(frm);
 }
 
@@ -540,6 +552,7 @@ function refreshJobCards(frm) {
     });
 }
 async function renderJobCards(frm, jobCards) {
+    console.log('Rendering job cards:', jobCards);
     const $wrapper = $(frm.fields_dict['workstation_dashboard'].wrapper);
     $wrapper.empty();
 
@@ -553,7 +566,7 @@ async function renderJobCards(frm, jobCards) {
         const jobCardTiles = await Promise.all(groupedJobCards[status].map(renderJobCardTile));
 
         return `
-            <div class="job-cards-group">
+            <div class="job-cards-group" data-status="${status}">
                 <h3>${status} (${groupedJobCards[status].length})</h3>
                 <div class="job-cards-grid">
                     ${jobCardTiles.join('')}
@@ -565,10 +578,10 @@ async function renderJobCards(frm, jobCards) {
     const html = (await Promise.all(htmlPromises)).join('');
 
     $wrapper.html(html);
+    console.log('Job cards rendered');
     bindActionEvents(frm);
     bindLinkEvents();
 }
-
 
 async function renderJobCardTile(jobCard) {
     const customerName = await getCustomerName(jobCard.work_order);
@@ -584,6 +597,9 @@ async function renderJobCardTile(jobCard) {
     } else if (mrDetails.hasMaterialRequest) {
         mrInfo = `<p><strong>Materials:</strong> ${mrDetails.hasReceivedQty ? '<span style="color: green;">Transferred</span>' : '<span style="color: red;">Not transferred</span>'}</p>`;
     }
+
+    // Determine the start date to display
+    let startedAt = jobCard.status === 'Open' ? frappe.datetime.now_datetime() : jobCard.actual_start_date;
 
     return `
        <div class="job-card-tile ${jobCard.custom_is_active === "1" ? 'active-job-card' : ''}" data-job-card="${jobCard.name}">
@@ -602,7 +618,7 @@ async function renderJobCardTile(jobCard) {
                 </p>
                 <p><strong>Operation:</strong> ${jobCard.operation}</p>
                 <p><strong>Workstation:</strong> ${jobCard.workstation}</p>
-                <p><strong>Started At:</strong> ${formatDateTime(jobCard.actual_start_date)}</p>
+                <p><strong>Started At:</strong> ${formatDateTime(startedAt)}</p>
                 <p><strong>Work Order:</strong> 
                     <a href="#" class="work-order-link" data-route="Form/Work Order/${encodeURIComponent(jobCard.work_order)}">${jobCard.work_order}</a>
                 </p>
@@ -658,25 +674,55 @@ function bindLinkEvents() {
     });
 }
 
-function bindActionEvents(frm) {
-    $('.btn-start').on('click', function() {
-        startJob(frm, $(this).data('job-card'));
+async function bindActionEvents(frm) {
+    $('.btn-start').off('click').on('click', async function(e) {
+        e.preventDefault();
+        try {
+            await startJob(frm, $(this).data('job-card'));
+        } catch (error) {
+            console.error("Error starting job:", error);
+            frappe.msgprint(__("Failed to start the job. Please try again."));
+        }
     });
 
-    $('.btn-pause').on('click', function() {
-        pauseJob(frm, $(this).data('job-card'));
+    $('.btn-pause').off('click').on('click', async function(e) {
+        e.preventDefault();
+        try {
+            await pauseJob(frm, $(this).data('job-card'));
+        } catch (error) {
+            console.error("Error pausing job:", error);
+            frappe.msgprint(__("Failed to pause the job. Please try again."));
+        }
     });
 
-    $('.btn-complete').on('click', function() {
-        completeJob(frm, $(this).data('job-card'));
+    $('.btn-complete').off('click').on('click', async function(e) {
+        e.preventDefault();
+        try {
+            await completeJob(frm, $(this).data('job-card'));
+        } catch (error) {
+            console.error("Error completing job:", error);
+            frappe.msgprint(__("Failed to complete the job. Please try again."));
+        }
     });
 
-    $('.btn-submit').on('click', function() {
-        submitJob(frm, $(this).data('job-card'));
+    $('.btn-submit').off('click').on('click', async function(e) {
+        e.preventDefault();
+        try {
+            await submitJob(frm, $(this).data('job-card'));
+        } catch (error) {
+            console.error("Error submitting job:", error);
+            frappe.msgprint(__("Failed to submit the job. Please try again."));
+        }
     });
 
-    $('.btn-resume').on('click', function() {
-        resumeJob(frm, $(this).data('job-card'));
+    $('.btn-resume').off('click').on('click', async function(e) {
+        e.preventDefault();
+        try {
+            await resumeJob(frm, $(this).data('job-card'));
+        } catch (error) {
+            console.error("Error resuming job:", error);
+            frappe.msgprint(__("Failed to resume the job. Please try again."));
+        }
     });
 }
 
@@ -804,7 +850,6 @@ function getActionButtons(jobCard) {
     return buttons;
 }
 
-
 async function submitJob(frm, jobCard) {
     // Reload the document before any operation
     let doc = await frappe.db.get_doc('Job Card', jobCard);
@@ -895,23 +940,23 @@ async function createNewJobCard(frm, parentJobCard, remainingQty) {
 function addJobCardActions(frm, jobCards) {
     frm.page.clear_actions_menu();
 
-    const hasOpenJobs = jobCards.some(job => job.status === "Open");
+    // const hasOpenJobs = jobCards.some(job => job.status === "Open");
     const hasRunningJobs = jobCards.some(job => job.status === "Work In Progress");
 
-    if (hasOpenJobs) {
-        frm.page.add_action_item(__('Start All Open Jobs'), () => startAllOpenJobs(frm, jobCards));
-    }
+    // if (hasOpenJobs) {
+    //     frm.page.add_action_item(__('Start All Open Jobs'), () => startAllOpenJobs(frm, jobCards));
+    // }
 
-    if (hasRunningJobs) {
-        frm.page.add_action_item(__('Pause All Running Jobs'), () => pauseAllRunningJobs(frm, jobCards));
-    }
+    // if (hasRunningJobs) {
+    //     frm.page.add_action_item(__('Pause All Running Jobs'), () => pauseAllRunningJobs(frm, jobCards));
+    // }
 
     if (hasRunningJobs) {
         frm.page.add_action_item(__('Pause All Running Jobs'), () => pauseAllRunningJobs(frm, jobCards));
     }
 
     frm.page.add_action_item(__('Refresh Job Cards'), () => refreshJobCards(frm));
-    frm.page.add_action_item(__('Clear All Filters'), () => clearAllFilters(frm));
+    // frm.page.add_action_item(__('Clear All Filters'), () => clearAllFilters(frm));
 }
 
 function updateFilterIndicator(frm) {
@@ -1159,6 +1204,14 @@ async function pauseJob(frm, jobCard) {
         frappe.msgprint(__('Failed to pause the job card. Please try again.'));
         console.error(error);
     }
+}
+
+function updateGroupCounts() {
+    $('.job-cards-group').each(function() {
+        const $group = $(this);
+        const count = $group.find('.job-card-tile').length;
+        $group.find('h3').text(`${$group.find('h3').text().split('(')[0]}(${count})`);
+    });
 }
 
 async function resumeJob(frm, jobCard) {

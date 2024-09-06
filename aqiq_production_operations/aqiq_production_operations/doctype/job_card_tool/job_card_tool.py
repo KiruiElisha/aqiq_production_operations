@@ -10,32 +10,27 @@ class JobCardTool(Document):
 
 
 from frappe import _
-from frappe.utils.caching import redis_cache
+from frappe.query_builder import DocType
 
 @frappe.whitelist()
-@redis_cache(ttl=300)  # Cache for 5 minutes
 def get_job_cards(status, workstations):
     status_list = frappe.parse_json(status)
     workstations_list = frappe.parse_json(workstations)
     
-    cache_key = f"job_cards:{','.join(status_list)}:{','.join(workstations_list)}"
+    JobCard = DocType('Job Card')
     
-    # Try to get results from cache
-    cached_result = frappe.cache().get_value(cache_key)
-    if cached_result:
-        return cached_result
-    
-    # If not in cache, fetch from database
-    result = frappe.get_all('Job Card',
-        filters={
-            'status': ('in', status_list),
-            'workstation': ('in', workstations_list)
-        },
-        fields=['name', 'workstation', 'operation', 'started_time', 
-                'status', 'work_order', 'for_quantity', 'total_completed_qty', 'custom_is_active']
+    query = (
+        frappe.qb.from_(JobCard)
+        .select(
+            JobCard.name, JobCard.workstation, JobCard.operation,
+            JobCard.started_time, JobCard.status, JobCard.work_order,
+            JobCard.for_quantity, JobCard.total_completed_qty,JobCard.actual_start_date,
+            JobCard.custom_is_active
+        )
+        .where(JobCard.status.isin(status_list))
+        .where(JobCard.workstation.isin(workstations_list))
     )
     
-    # Store result in cache
-    frappe.cache().set_value(cache_key, result)
+    result = query.run(as_dict=True)
     
     return result

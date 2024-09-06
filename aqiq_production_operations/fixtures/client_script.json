@@ -20,5 +20,16 @@
   "name": "Workstation Custom",
   "script": "frappe.ui.form.on('Workstation', {\r\n    custom_generate_qr_code: function(frm) {\r\n        frappe.call({\r\n            method: 'aqiq_production_operations.aqiq_production_operations.rest.custom_workstation.generate_qr_code_button',\r\n            args: {\r\n                workstation_name: frm.doc.name\r\n            },\r\n            freeze: true,\r\n            freeze_message: __('Generating QR Code...'),\r\n            callback: function(r) {\r\n                if (r.message) {\r\n                    frm.reload_doc();\r\n                    frappe.show_alert({\r\n                        message: __('QR Code generated successfully'),\r\n                        indicator: 'green'\r\n                    });\r\n                } else {\r\n                    frappe.msgprint(__('Failed to generate QR Code. Please try again.'));\r\n                }\r\n            }\r\n        });\r\n    }\r\n});",
   "view": "Form"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Client Script",
+  "dt": "Workstation",
+  "enabled": 1,
+  "modified": "2024-09-02 10:22:27.287546",
+  "module": "AQIQ Production operations",
+  "name": "Workstation QR Codes",
+  "script": "frappe.listview_settings['Workstation'] = {\r\n    'onload': function(listview) {\r\n        listview.page.add_inner_button(__('Print QR Codes'), function() {\r\n            let selected_workstations = listview.get_checked_items();\r\n\r\n            if (selected_workstations.length === 0) {\r\n                frappe.msgprint(__('Please select at least one workstation.'));\r\n                return;\r\n            }\r\n\r\n            // Example of how to structure the data\r\n            let workstation_data = selected_workstations.map(workstation => ({\r\n                name: workstation.name,\r\n                qr_code: workstation.custom_workstation_qr_code\r\n            }));\r\n\r\n\r\n            // Call the server-side method to generate the PDF\r\n            frappe.call({\r\n                method: 'aqiq_production_operations.aqiq_production_operations.rest.custom_workstation.custom_print_qr_codes',\r\n                args: {\r\n                    workstations: workstation_data\r\n                },\r\n                callback: function(response) {\r\n                    let print_url = response.message;\r\n                    window.open(print_url, '_blank');  // Open the generated PDF in a new tab\r\n                }\r\n            });\r\n        });\r\n    }\r\n};\r\n",
+  "view": "List"
  }
 ]
