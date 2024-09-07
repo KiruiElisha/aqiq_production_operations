@@ -601,6 +601,8 @@ async function renderJobCardTile(jobCard) {
     // Determine the start date to display
     let startedAt = jobCard.status === 'Open' ? frappe.datetime.now_datetime() : jobCard.actual_start_date;
 
+    const actionButtons = await getActionButtons(jobCard);
+
     return `
        <div class="job-card-tile ${jobCard.custom_is_active === "1" ? 'active-job-card' : ''}" data-job-card="${jobCard.name}">
             <div class="job-card-header" style="background-color: ${getStatusColor(jobCard.status)};">
@@ -627,7 +629,7 @@ async function renderJobCardTile(jobCard) {
                 ${mrInfo}
             </div>
             <div class="job-card-actions">
-                ${getActionButtons(jobCard)}
+            ${actionButtons}
             </div>
         </div>
     `;
@@ -635,31 +637,53 @@ async function renderJobCardTile(jobCard) {
 
 async function getMaterialRequestDetails(jobCardName) {
     try {
-        const jobCardDetails = await frappe.db.get_value('Job Card', jobCardName, 'status');
+        const jobCardDetails = await frappe.db.get_value('Job Card', jobCardName, ['status', 'work_order']);
         if (jobCardDetails.message.status === 'Material Transferred') {
             return { hasMaterialRequest: true, hasReceivedQty: true };
         }
 
-        const result = await frappe.db.get_list('Material Request', {
+        // Check for Material Request
+        const mrResult = await frappe.db.get_list('Material Request', {
             filters: { 'job_card': jobCardName },
             fields: ['name']
         });
 
-        if (result.length === 0) {
-            return { hasMaterialRequest: false };
+        let hasMaterialRequest = mrResult.length > 0;
+        let hasReceivedQty = false;
+
+        if (hasMaterialRequest) {
+            const mrItems = await frappe.db.get_list('Material Request Item', {
+                filters: { 'parent': mrResult[0].name },
+                fields: ['received_qty']
+            });
+            hasReceivedQty = mrItems.some(item => item.received_qty > 0);
         }
 
-        const mrItems = await frappe.db.get_list('Material Request Item', {
-            filters: { 'parent': result[0].name },
-            fields: ['received_qty']
+        // Check for Stock Entry against the Job Card
+        const stockEntries = await frappe.db.get_list('Stock Entry', {
+            filters: {
+                'job_card': jobCardName,
+                'docstatus': 1,
+                'stock_entry_type': 'Material Transfer for Manufacture'
+            },
+            fields: ['name']
         });
 
-        const hasReceivedQty = mrItems.some(item => item.received_qty > 0);
+        const hasStockEntry = stockEntries.length > 0;
 
-        return { hasMaterialRequest: true, hasReceivedQty: hasReceivedQty };
+        // If there's a stock entry, we consider materials as transferred
+        if (hasStockEntry) {
+            hasReceivedQty = true;
+        }
+
+        // If no Material Request but has Stock Entry, we still want to indicate materials are transferred
+        return { 
+            hasMaterialRequest: hasMaterialRequest || hasStockEntry, 
+            hasReceivedQty: hasReceivedQty 
+        };
     } catch (error) {
         console.error("Error fetching Material Request details:", error);
-        return { hasMaterialRequest: false };
+        return { hasMaterialRequest: false, hasReceivedQty: false };
     }
 }
 
@@ -821,12 +845,15 @@ async function completeJob(frm, jobCard) {
     }
 }
 
-function getActionButtons(jobCard) {
+async function getActionButtons(jobCard) {
     let buttons = '';
     const remainingQty = jobCard.for_quantity - (jobCard.total_completed_qty || 0);
     const hasStarted = jobCard.status === 'Work In Progress' || jobCard.status === 'On Hold';
     const isNotActive = jobCard.custom_is_active == 0;
-    const isMaterialTransferred = jobCard.status === 'Material Transferred';
+
+    // Check material request status
+    const mrDetails = await getMaterialRequestDetails(jobCard.name);
+    const canStart = !mrDetails.hasMaterialRequest || mrDetails.hasReceivedQty;
 
     if (jobCard.total_completed_qty < jobCard.for_quantity) {
         if (jobCard.custom_is_active == 1) {
@@ -835,14 +862,11 @@ function getActionButtons(jobCard) {
                 <button class="btn btn-success btn-xs btn-complete" data-job-card="${jobCard.name}">Complete</button>
             `;
         } else {
-            if (jobCard.status === 'Open' || (jobCard.status === 'Work In Progress' && remainingQty > 0)) {
-                buttons += `<button class="btn btn-primary btn-xs btn-start" data-job-card="${jobCard.name}" ${!isMaterialTransferred ? 'disabled' : ''}>Start</button>`;
-            }
-            if (jobCard.status === 'Material Transferred' && remainingQty > 0) {
-                buttons += `<button class="btn btn-primary btn-xs btn-start" data-job-card="${jobCard.name}">Start</button>`;
+            if (jobCard.status === 'Open' || jobCard.status === 'Material Transferred' || (jobCard.status === 'Work In Progress' && remainingQty > 0)) {
+                buttons += `<button class="btn btn-primary btn-xs btn-start" data-job-card="${jobCard.name}" ${canStart ? '' : 'disabled title="Materials not transferred"'}>Start</button>`;
             }
             if (jobCard.status === 'On Hold' && remainingQty > 0) {
-                buttons += `<button class="btn btn-info btn-xs btn-resume" data-job-card="${jobCard.name}">Resume</button>`;
+                buttons += `<button class="btn btn-info btn-xs btn-resume" data-job-card="${jobCard.name}" ${canStart ? '' : 'disabled title="Materials not transferred"'}>Resume</button>`;
             }
         }
     }
