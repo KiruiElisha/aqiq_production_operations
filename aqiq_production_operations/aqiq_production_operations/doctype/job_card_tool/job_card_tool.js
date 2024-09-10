@@ -53,11 +53,18 @@ function setupRefreshMechanism(frm) {
 async function silentlyUpdateJobCards(frm) {
     try {
         const filters = JSON.parse(localStorage.getItem('job_card_filters') || '{}');
+        
+        // Check if there are any filtered workstations
+        if (!filters.filtered_workstations || filters.filtered_workstations.length === 0) {
+            console.log("No workstation set, skipping update");
+            return;
+        }
+
         const response = await frm.call({
             method: 'get_job_cards',
             args: {
                 status: filters.job_card_status || ['Open', 'Work In Progress', 'On Hold', 'Completed', 'Cancelled', 'Material Transferred'],
-                workstations: filters.filtered_workstations ? filters.filtered_workstations.split(',') : []
+                workstations: filters.filtered_workstations.split(',')
             },
             freeze: false
         });

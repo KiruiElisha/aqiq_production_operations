@@ -52,67 +52,85 @@ from frappe import _
 from frappe.utils import get_files_path
 import os
 from reportlab.lib.pagesizes import A4
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Frame, PageTemplate, KeepTogether
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import cm
-from reportlab.graphics.shapes import Drawing
+from reportlab.lib.units import cm, mm
+from reportlab.graphics.shapes import Drawing, Rect
 from reportlab.graphics.barcode.qr import QrCodeWidget
-from reportlab.graphics import renderPDF
 from reportlab.lib.colors import HexColor
-from reportlab.platypus import Frame, PageTemplate, FrameBreak
 
 @frappe.whitelist()
-def custom_print_qr_codes(workstations):
+def custom_print_qr_codes(workstations, doctype="Workstation", qr_field="custom_workstation_qr_code", title_field="name"):
     workstations = frappe.parse_json(workstations)
     
     # Prepare the PDF
-    file_name = f"Workstation_QR_Codes_{frappe.utils.now()}.pdf"
+    file_name = f"{doctype}_QR_Codes_{frappe.utils.now()}.pdf"
     file_path = os.path.join(get_files_path(), file_name)
     doc = SimpleDocTemplate(file_path, pagesize=A4)
 
     # Prepare styles
     styles = getSampleStyleSheet()
-    title_style = ParagraphStyle('Title', parent=styles['Heading1'], alignment=1, spaceAfter=1*cm, textColor=HexColor("#1a237e"))
-    name_style = ParagraphStyle('Name', parent=styles['Normal'], alignment=1, fontSize=14, textColor=HexColor("#303f9f"))
+    title_style = ParagraphStyle('Title', parent=styles['Heading1'], alignment=1, fontSize=18, spaceAfter=0.5*cm)
+    name_style = ParagraphStyle('Name', parent=styles['Normal'], alignment=1, fontSize=16, spaceAfter=0.2*cm)
 
     # Create a frame for centered content
-    frame_width = A4[0] - 4*cm
-    frame_height = A4[1] - 4*cm
-    frame = Frame(2*cm, 2*cm, frame_width, frame_height, id='centered_frame')
+    margin = 2*cm
+    frame_width = A4[0] - 2*margin
+    frame_height = A4[1] - 2*margin
+    frame = Frame(margin, margin, frame_width, frame_height, id='centered_frame')
 
-    # Create a PageTemplate with the centered frame
-    template = PageTemplate(id='centered_template', frames=[frame])
+    # Create a PageTemplate with dynamic header and footer
+    def add_page_elements(canvas, doc):
+        canvas.saveState()
+        
+        # Add header
+        canvas.setFont("Helvetica-Bold", 14)
+        canvas.drawCentredString(A4[0]/2, A4[1]-20*mm, f"{doctype} QR Codes")
+        
+        # Add footer with page number and timestamp
+        canvas.setFont("Helvetica", 9)
+        canvas.drawString(10*mm, 10*mm, f"Generated on: {frappe.utils.now_datetime().strftime('%Y-%m-%d %H:%M:%S')}")
+        canvas.drawRightString(A4[0]-10*mm, 10*mm, f"Page {doc.page}")
+        
+        canvas.restoreState()
+
+    template = PageTemplate(id='dynamic_template', frames=[frame], onPage=add_page_elements)
     doc.addPageTemplates([template])
 
     # Prepare content
-    content = []
-    content.append(Paragraph("Workstation QR Codes", title_style))
+    content = [Paragraph(f"{doctype} QR Codes", title_style), Spacer(1, 1*cm)]
 
-    for workstation in workstations:
-        # Fetch the workstation document to get the custom_workstation_qr_code
-        workstation_doc = frappe.get_doc("Workstation", workstation['name'])
-        qr_code_data = workstation_doc.custom_workstation_qr_code
+    for i, item in enumerate(workstations):
+        doc_obj = frappe.get_doc(doctype, item['name'])
+        qr_code_data = getattr(doc_obj, qr_field, None)
 
         if not qr_code_data:
-            frappe.msgprint(f"No QR code data found for workstation {workstation['name']}")
+            frappe.msgprint(f"No QR code data found for {doctype} {item['name']}")
             continue
 
-        # Create QR code
-        qr_code = QrCodeWidget(qr_code_data)
-        qr_code.barWidth = 5*cm
-        qr_code.barHeight = 5*cm
-        d = Drawing(5*cm, 5*cm)
-        d.add(qr_code)
-        
-        # Center the QR code with the accompanying text
-        content.append(Spacer(1, 1*cm))
-        content.append(Paragraph(f"WS: {workstation['name']}", name_style))
-        content.append(Spacer(1, 0.5*cm))
-        content.append(d)
-        content.append(Spacer(1, 2*cm))  # Add more space between QR codes
+        # Create a KeepTogether block for each workstation
+        keep_together = [Paragraph(f"{getattr(doc_obj, title_field)}", name_style)]
 
-    if not content[1:]:
-        frappe.throw("No valid QR code data found for any selected workstations")
+        # Create QR code with border
+        qr_code = QrCodeWidget(qr_code_data)
+        qr_code_size = 7*cm  # Reduced from 10cm to 7cm
+        qr_code.barWidth = qr_code_size
+        qr_code.barHeight = qr_code_size
+        d = Drawing(frame_width, qr_code_size + 0.5*cm)
+        d.add(Rect(0, 0, qr_code_size + 0.5*cm, qr_code_size + 0.5*cm, fillColor=None, strokeColor=HexColor("#303f9f"), strokeWidth=1))
+        d.add(qr_code)
+        d.translate((frame_width - (qr_code_size + 0.5*cm)) / 2, 0.25*cm)
+        
+        keep_together.append(d)
+        
+        # Add the KeepTogether block to the content
+        content.append(KeepTogether(keep_together))
+        
+        if i < len(workstations) - 1:
+            content.append(Spacer(1, 1.5*cm))  # Reduced spacer from 2cm to 1.5cm
+
+    if not content[2:]:  # Check if any QR codes were added (excluding title and initial spacer)
+        frappe.throw(f"No valid QR code data found for any selected {doctype}")
 
     # Build the PDF
     doc.build(content)
@@ -129,7 +147,3 @@ def custom_print_qr_codes(workstations):
     file_doc.insert(ignore_permissions=True)
 
     return file_url
-
-
-
-
