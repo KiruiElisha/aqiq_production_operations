@@ -69,6 +69,10 @@ def create_and_rename_job_card(parent_job_card, remaining_qty):
         new_job_card.scrap_items = []
         new_job_card.docstatus = 0
         new_job_card.custom_employee_list = []
+        new_job_card.actual_end_date = None
+        new_job_card.actual_start_date = None
+        new_job_card.total_time_in_mins = 0
+        new_job_card.custom_skip_material_request = True
 
         # Insert the new job card document
         new_job_card.insert()
@@ -157,6 +161,7 @@ def set_job_card_employees_and_start(job_card_name, employees):
         return "Error"
 
 
+
 @frappe.whitelist()
 def validate_job_card_sequence_id(job_card_name):
     job_card = frappe.get_doc("Job Card", job_card_name)
@@ -167,61 +172,37 @@ def validate_job_card_sequence_id(job_card_name):
     if not (job_card.work_order and job_card.sequence_id):
         frappe.throw(_("Work Order and Sequence ID are required for Job Card {0}").format(job_card_name))
 
-    # Get all job cards for the work order, including those not started
-    # Check if the work order has started
-    # work_order = frappe.get_doc("Work Order", job_card.work_order)
-    # if work_order.status not in ["In Process", "Completed"]:
-    #     frappe.throw(_("Work Order {0} must be started before starting Job Card {1}").format(job_card.work_order, job_card_name))
-
     all_job_cards = frappe.get_all(
         "Job Card",
         filters={"work_order": job_card.work_order},
-        fields=["name", "sequence_id", "status", "docstatus", "operation"],
+        fields=["name", "sequence_id", "status", "docstatus", "operation", "total_completed_qty", "for_quantity"],
         order_by="sequence_id, creation"
     )
 
-    # Group job cards by sequence_id
     sequence_groups = {}
     for jc in all_job_cards:
         if jc.sequence_id not in sequence_groups:
             sequence_groups[jc.sequence_id] = []
         sequence_groups[jc.sequence_id].append(jc)
 
-    # Check if the sequence is in order
-    # prev_seq_id = 0
-    # for seq_id in sorted(sequence_groups.keys()):
-    #     if int(seq_id) != prev_seq_id + 1:
-    #         frappe.throw(_("Invalid Sequence ID {0}. Expected {1}").format(seq_id, prev_seq_id + 1))
-    #     prev_seq_id = int(seq_id)
-
-    # Find the current job card's position in the sequence
     current_group = next((group for group in sequence_groups.values() if job_card_name in [jc.name for jc in group]), None)
     if current_group is None:
         frappe.throw(_("Job Card {0} not found in the sequence for Work Order {1}").format(job_card_name, job_card.work_order))
 
     current_seq_id = current_group[0].sequence_id
 
-    # Check all previous groups in the sequence
     for seq_id in sorted(sequence_groups.keys()):
         if int(seq_id) >= int(current_seq_id):
             break
 
         prev_group = sequence_groups[seq_id]
         
-        # Check if all job cards in the previous group are completed or in progress
-        for prev_job_card in prev_group:
-            if prev_job_card.status not in ["Completed", "In Progress"]:
-                frappe.throw(_("Previous Job Card {0} (Operation: {1}, Sequence: {2}) must be started before starting Job Card {3} (Operation: {4}, Sequence: {5})").format(
-                    prev_job_card.name, prev_job_card.operation, seq_id, job_card_name, job_card.operation, current_seq_id
-                ))
+        # Check if at least one job card in the previous group has some completed quantity
+        if not any(prev_job_card.total_completed_qty > 0 for prev_job_card in prev_group):
+            frappe.throw(_("At least one Job Card in the previous sequence (Sequence: {0}) must have some completed quantity before starting Job Card {1} (Operation: {2}, Sequence: {3})").format(
+                seq_id, job_card_name, job_card.operation, current_seq_id
+            ))
 
-            # If the previous job card is in progress, check if it has started
-            if prev_job_card.status == "In Progress" and prev_job_card.docstatus == 0:
-                frappe.throw(_("Previous Job Card {0} (Operation: {1}, Sequence: {2}) must be started before starting Job Card {3} (Operation: {4}, Sequence: {5})").format(
-                    prev_job_card.name, prev_job_card.operation, seq_id, job_card_name, job_card.operation, current_seq_id
-                ))
-
-    # If we've made it this far, the sequence is valid
     return True
 
 

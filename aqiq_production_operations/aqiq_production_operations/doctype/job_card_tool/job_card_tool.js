@@ -644,52 +644,29 @@ async function renderJobCardTile(jobCard) {
 
 async function getMaterialRequestDetails(jobCardName) {
     try {
-        const jobCardDetails = await frappe.db.get_value('Job Card', jobCardName, ['status', 'work_order']);
-        if (jobCardDetails.message.status === 'Material Transferred') {
-            return { hasMaterialRequest: true, hasReceivedQty: true };
-        }
-
-        // Check for Material Request
-        const mrResult = await frappe.db.get_list('Material Request', {
-            filters: { 'job_card': jobCardName },
-            fields: ['name']
+        const response = await frappe.call({
+            method: "aqiq_production_operations.aqiq_production_operations.rest.update_jobcard.get_material_request_details",
+            args: {
+                job_card_name: jobCardName
+            }
         });
 
-        let hasMaterialRequest = mrResult.length > 0;
-        let hasReceivedQty = false;
-
-        if (hasMaterialRequest) {
-            const mrItems = await frappe.db.get_list('Material Request Item', {
-                filters: { 'parent': mrResult[0].name },
-                fields: ['received_qty']
-            });
-            hasReceivedQty = mrItems.some(item => item.received_qty > 0);
+        if (response.message && response.message.success) {
+            return {
+                hasMaterialRequest: response.message.hasMaterialRequest,
+                hasReceivedQty: response.message.hasReceivedQty
+            };
+        } else {
+            console.error("Error fetching Material Request details:", response.message.error);
+            
+            return { hasMaterialRequest: false, hasReceivedQty: false };
         }
-
-        // Check for Stock Entry against the Job Card
-        const stockEntries = await frappe.db.get_list('Stock Entry', {
-            filters: {
-                'job_card': jobCardName,
-                'docstatus': 1,
-                'stock_entry_type': 'Material Transfer for Manufacture'
-            },
-            fields: ['name']
-        });
-
-        const hasStockEntry = stockEntries.length > 0;
-
-        // If there's a stock entry, we consider materials as transferred
-        if (hasStockEntry) {
-            hasReceivedQty = true;
-        }
-
-        // If no Material Request but has Stock Entry, we still want to indicate materials are transferred
-        return { 
-            hasMaterialRequest: hasMaterialRequest || hasStockEntry, 
-            hasReceivedQty: hasReceivedQty 
-        };
     } catch (error) {
-        console.error("Error fetching Material Request details:", error);
+        console.error("Error calling Material Request details method:", error);
+        frappe.show_alert({
+            message: __("An unexpected error occurred. Please try again."),
+            indicator: 'red'
+        });
         return { hasMaterialRequest: false, hasReceivedQty: false };
     }
 }
@@ -886,48 +863,49 @@ async function getActionButtons(jobCard) {
 }
 
 async function submitJob(frm, jobCard) {
-    // Reload the document before any operation
-    let doc = await frappe.db.get_doc('Job Card', jobCard);
-    let qtyToManufacture = doc.for_quantity;
-    let completedQty = doc.total_completed_qty || 0;
-    let remainingQty = qtyToManufacture - completedQty;
-    
-
-    // Reload the document again before submitting
-    doc = await frappe.db.get_doc('Job Card', jobCard);
-    
-    // If the job card is not already completed, update its status and completed quantity
-    if (doc.status !== 'Completed') {
-        let newCompletedQty = remainingQty;
-        let totalCompletedQty = completedQty + newCompletedQty;
-
-        // Set for_quantity to total_completed_qty before making the time log
-        await frappe.db.set_value('Job Card', jobCard, {
-            'for_quantity': totalCompletedQty
-        });
-
-        await frappe.call({
-            method: "erpnext.manufacturing.doctype.job_card.job_card.make_time_log",
-            args: {
-                args: {
-                    job_card_id: jobCard,
-                    complete_time: frappe.datetime.now_datetime(),
-                    completed_qty: newCompletedQty,
-                    status: 'Completed'
-                }
-            }
-        });
-
-        await frappe.db.set_value('Job Card', jobCard, {
-            'status': 'Completed',
-            'total_completed_qty': totalCompletedQty
-        });
-    }
-
-    // Reload the document before saving
-    doc = await frappe.db.get_doc('Job Card', jobCard);
+    frappe.dom.freeze(__('Submitting Job Card...'));
 
     try {
+        // Reload the document before any operation
+        let doc = await frappe.db.get_doc('Job Card', jobCard);
+        let qtyToManufacture = doc.for_quantity;
+        let completedQty = doc.total_completed_qty || 0;
+        let remainingQty = qtyToManufacture - completedQty;
+
+        // Reload the document again before submitting
+        doc = await frappe.db.get_doc('Job Card', jobCard);
+
+        // If the job card is not already completed, update its status and completed quantity
+        if (doc.status !== 'Completed') {
+            let newCompletedQty = remainingQty;
+            let totalCompletedQty = completedQty + newCompletedQty;
+
+            // Set for_quantity to total_completed_qty before making the time log
+            await frappe.db.set_value('Job Card', jobCard, {
+                'for_quantity': totalCompletedQty
+            });
+
+            await frappe.call({
+                method: "erpnext.manufacturing.doctype.job_card.job_card.make_time_log",
+                args: {
+                    args: {
+                        job_card_id: jobCard,
+                        complete_time: frappe.datetime.now_datetime(),
+                        completed_qty: newCompletedQty,
+                        status: 'Completed'
+                    }
+                }
+            });
+
+            await frappe.db.set_value('Job Card', jobCard, {
+                'status': 'Completed',
+                'total_completed_qty': totalCompletedQty
+            });
+        }
+
+        // Reload the document before saving
+        doc = await frappe.db.get_doc('Job Card', jobCard);
+
         await frappe.call({
             method: 'frappe.client.submit',
             args: {
@@ -936,19 +914,26 @@ async function submitJob(frm, jobCard) {
         });
 
         frappe.show_alert({ message: __('Job Card submitted.'), indicator: 'green' });
-        
+
         if (remainingQty > 0) {
-            createNewJobCard(frm, doc, remainingQty);
+            await createNewJobCard(frm, doc, remainingQty);
         } else {
             refreshJobCards(frm);
         }
     } catch (error) {
         console.error("Error saving Job Card:", error);
-        frappe.msgprint(__("Error saving Job Card. The job card list will be refreshed."));
+        let errorMessage = __("Error saving Job Card. The job card list will be refreshed.");
+        
+        if (error.message) {
+            errorMessage += ` ${__("Details:")} ${error.message}`;
+        }
+
+        frappe.msgprint(errorMessage);
         refreshJobCards(frm);
+    } finally {
+        frappe.dom.unfreeze();
     }
 }
-
 async function createNewJobCard(frm, parentJobCard, remainingQty) {
     try {
         let result = await frappe.call({

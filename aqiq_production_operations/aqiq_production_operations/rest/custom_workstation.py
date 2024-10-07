@@ -109,17 +109,21 @@ def custom_print_qr_codes(workstations, doctype="Workstation", qr_field="custom_
             continue
 
         # Create a KeepTogether block for each workstation
-        keep_together = [Paragraph(f"{getattr(doc_obj, title_field)}", name_style)]
+        keep_together = []
+
+        # Add workstation name above the QR code
+        keep_together.append(Paragraph(f"{getattr(doc_obj, title_field)}", name_style))
+        keep_together.append(Spacer(1, 0.5*cm))  # Add some space between name and QR code
 
         # Create QR code with border
         qr_code = QrCodeWidget(qr_code_data)
-        qr_code_size = 7*cm  # Reduced from 10cm to 7cm
+        qr_code_size = 7*cm
         qr_code.barWidth = qr_code_size
         qr_code.barHeight = qr_code_size
         d = Drawing(frame_width, qr_code_size + 0.5*cm)
         d.add(Rect(0, 0, qr_code_size + 0.5*cm, qr_code_size + 0.5*cm, fillColor=None, strokeColor=HexColor("#303f9f"), strokeWidth=1))
         d.add(qr_code)
-        d.translate((frame_width - (qr_code_size + 0.5*cm)) / 2, 0.25*cm)
+        d.translate((frame_width - (qr_code_size + 0.5*cm)) / 2, 0)
         
         keep_together.append(d)
         
@@ -127,7 +131,7 @@ def custom_print_qr_codes(workstations, doctype="Workstation", qr_field="custom_
         content.append(KeepTogether(keep_together))
         
         if i < len(workstations) - 1:
-            content.append(Spacer(1, 1.5*cm))  # Reduced spacer from 2cm to 1.5cm
+            content.append(Spacer(1, 1.5*cm))
 
     if not content[2:]:  # Check if any QR codes were added (excluding title and initial spacer)
         frappe.throw(f"No valid QR code data found for any selected {doctype}")
